@@ -1,0 +1,43 @@
+# Go
+/sonus
+/cmd/server/server
+/cmd/tui/tui
+*.exe
+*.test
+*.out
+vendor/
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
+
+# iOS
+ios/**/*.xcworkspace
+ios/**/xcuserdata/
+ios/**/DerivedData/
+ios/**/*.xcodeproj/project.xcworkspace/
+ios/**/*.xcodeproj/xcuserdata/
+ios/**/Pods/
+
+# Data (runtime)
+*.db
+*.db-wal
+*.db-shm
+data/
+cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Dolt database files (added by bd init)
+.dolt/
