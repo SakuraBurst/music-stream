@@ -12,6 +12,7 @@ import (
 
 	"github.com/sakuraburst/sonus/internal/api"
 	"github.com/sakuraburst/sonus/internal/config"
+	"github.com/sakuraburst/sonus/internal/store/sqlite"
 )
 
 func main() {
@@ -27,6 +28,16 @@ func main() {
 	}
 
 	cfg.LogSafe(logger)
+
+	// Open SQLite database and run migrations.
+	db, err := sqlite.Open(cfg.Server.DataDir, logger)
+	if err != nil {
+		logger.Error("failed to open database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	_ = db // Will be passed to stores in subsequent tasks.
 
 	router := api.NewRouter(logger)
 

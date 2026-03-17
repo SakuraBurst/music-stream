@@ -1,5 +1,6 @@
 # Go
 /sonus
+/server
 /cmd/server/server
 /cmd/tui/tui
 *.exe
