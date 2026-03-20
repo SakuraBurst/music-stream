@@ -78,12 +78,13 @@ func TestOpenIdempotent(t *testing.T) {
 	}
 	defer db2.Close()
 
-	// Should still have exactly one migration recorded.
+	// Should still have exactly the same number of migrations recorded (no re-application).
 	var count int
 	if err := db2.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("querying schema_migrations: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("schema_migrations count = %d after double open, want 1", count)
+	// There are 2 migration files (001_init.sql, 002_fix_fts.sql).
+	if count != 2 {
+		t.Errorf("schema_migrations count = %d after double open, want 2", count)
 	}
 }

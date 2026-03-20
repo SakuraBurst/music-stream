@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 // Config holds all configuration for the Sonus server.
 type Config struct {
+	Dev         bool              `koanf:"dev"`
 	Server      ServerConfig      `koanf:"server"`
 	Library     LibraryConfig     `koanf:"library"`
 	Transcoding TranscodingConfig `koanf:"transcoding"`
@@ -39,6 +41,47 @@ type TranscodingConfig struct {
 	CacheMaxSize string `koanf:"cache_max_size"`
 	DefaultFormat  string `koanf:"default_format"`
 	DefaultBitrate int    `koanf:"default_bitrate"`
+}
+
+// ParsedCacheMaxSize parses the cache_max_size value (e.g., "10GB", "500MB")
+// and returns the size in bytes. Supported suffixes: B, KB, MB, GB, TB (case-insensitive).
+// Returns 10GB if the value cannot be parsed.
+func (c *TranscodingConfig) ParsedCacheMaxSize() int64 {
+	s := strings.TrimSpace(c.CacheMaxSize)
+	if s == "" {
+		return 10 * 1024 * 1024 * 1024 // 10 GB
+	}
+
+	s = strings.ToUpper(s)
+
+	multipliers := []struct {
+		suffix     string
+		multiplier int64
+	}{
+		{"TB", 1024 * 1024 * 1024 * 1024},
+		{"GB", 1024 * 1024 * 1024},
+		{"MB", 1024 * 1024},
+		{"KB", 1024},
+		{"B", 1},
+	}
+
+	for _, m := range multipliers {
+		if strings.HasSuffix(s, m.suffix) {
+			numStr := strings.TrimSpace(strings.TrimSuffix(s, m.suffix))
+			val, err := strconv.ParseFloat(numStr, 64)
+			if err != nil {
+				return 10 * 1024 * 1024 * 1024
+			}
+			return int64(val * float64(m.multiplier))
+		}
+	}
+
+	// Try parsing as raw bytes.
+	val, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 10 * 1024 * 1024 * 1024
+	}
+	return val
 }
 
 type AuthConfig struct {
@@ -180,6 +223,7 @@ func (c *Config) LogSafe(logger *slog.Logger) {
 	}
 
 	logger.Info("server configuration",
+		"dev", c.Dev,
 		"server.address", c.Server.Address,
 		"server.data_dir", c.Server.DataDir,
 		"library.music_dirs", c.Library.MusicDirs,

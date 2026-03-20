@@ -7,12 +7,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/sakuraburst/sonus/internal/api"
+	"github.com/sakuraburst/sonus/internal/auth"
 	"github.com/sakuraburst/sonus/internal/config"
+	"github.com/sakuraburst/sonus/internal/service"
 	"github.com/sakuraburst/sonus/internal/store/sqlite"
+	"github.com/sakuraburst/sonus/web"
 )
 
 func main() {
@@ -27,6 +31,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Auto-generate JWT secret if not provided.
+	if cfg.Auth.JWTSecret == "" {
+		secret, err := auth.GenerateSecret()
+		if err != nil {
+			logger.Error("failed to generate JWT secret", "error", err)
+			os.Exit(1)
+		}
+		cfg.Auth.JWTSecret = secret
+		logger.Warn("JWT secret auto-generated; set auth.jwt_secret in config for stable tokens across restarts")
+	}
+
 	cfg.LogSafe(logger)
 
 	// Open SQLite database and run migrations.
@@ -37,9 +52,75 @@ func main() {
 	}
 	defer db.Close()
 
-	_ = db // Will be passed to stores in subsequent tasks.
+	// Create stores.
+	userStore := sqlite.NewUserStore(db)
+	artistStore := sqlite.NewArtistStore(db)
+	albumStore := sqlite.NewAlbumStore(db)
+	trackStore := sqlite.NewTrackStore(db)
+	playlistStore := sqlite.NewPlaylistStore(db)
+	favoriteStore := sqlite.NewFavoriteStore(db)
+	historyStore := sqlite.NewHistoryStore(db)
 
-	router := api.NewRouter(logger)
+	// Create services.
+	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, cfg.Auth.ParsedAccessTokenTTL())
+
+	authService := service.NewAuthService(
+		userStore,
+		tokenManager,
+		cfg.Auth.ParsedRefreshTokenTTL(),
+		cfg.Auth.RegistrationEnabled,
+		logger,
+	)
+
+	coverArtDir := filepath.Join(cfg.Server.DataDir, "coverart")
+	coverArtService := service.NewCoverArtService(albumStore, trackStore, coverArtDir, logger)
+
+	scannerService := service.NewScannerService(
+		artistStore,
+		albumStore,
+		trackStore,
+		coverArtService,
+		cfg.Library.MusicDirs,
+		4, // default worker count
+		logger,
+	)
+
+	libraryService := service.NewLibraryService(artistStore, albumStore, trackStore)
+	streamService := service.NewStreamService(trackStore)
+	cacheMaxSize := cfg.Transcoding.ParsedCacheMaxSize()
+	transcoderService := service.NewTranscoderService(cfg.Transcoding.FFmpegPath, cfg.Server.DataDir, cacheMaxSize, logger)
+	searchService := service.NewSearchService(trackStore, artistStore, albumStore)
+	playlistService := service.NewPlaylistService(playlistStore, trackStore, artistStore, albumStore)
+
+	router := api.NewRouter(api.Deps{
+		Logger:            logger,
+		DevMode:           cfg.Dev,
+		FrontendFS:        web.DistFS,
+		AuthService:       authService,
+		TokenManager:      tokenManager,
+		ScannerService:    scannerService,
+		LibraryService:    libraryService,
+		StreamService:     streamService,
+		TranscoderService: transcoderService,
+		CoverArtService:   coverArtService,
+		SearchService:     searchService,
+		PlaylistService:   playlistService,
+		FavoriteStore:     favoriteStore,
+		HistoryStore:      historyStore,
+	})
+
+	// Start transcode cache evictor.
+	transcoderService.StartCacheEvictor(context.Background())
+
+	// Start scan on startup if configured.
+	if cfg.Library.ScanOnStartup && len(cfg.Library.MusicDirs) > 0 {
+		go func() {
+			logger.Info("starting library scan on startup")
+			if err := scannerService.Scan(context.Background()); err != nil {
+				logger.Error("startup scan failed", "error", err)
+			}
+		}()
+	}
 
 	srv := &http.Server{
 		Addr:         cfg.Server.Address,
@@ -72,6 +153,9 @@ func main() {
 		logger.Error("server shutdown error", "error", err)
 		os.Exit(1)
 	}
+
+	// Stop the transcode cache evictor.
+	transcoderService.StopCacheEvictor()
 
 	logger.Info("server stopped gracefully")
 }

@@ -36,6 +36,7 @@ type AlbumStore interface {
 	Update(ctx context.Context, album *model.Album) error
 	Delete(ctx context.Context, id string) error
 	GetByID(ctx context.Context, id string) (*model.Album, error)
+	GetByArtistAndName(ctx context.Context, artistID, name string) (*model.Album, error)
 	List(ctx context.Context, opts ListOptions) ([]model.Album, int, error)
 	ListByArtist(ctx context.Context, artistID string) ([]model.Album, error)
 }
@@ -77,8 +78,10 @@ type HistoryStore interface {
 	ListByUser(ctx context.Context, userID string, opts ListOptions) ([]model.ListeningHistory, int, error)
 }
 
-// ListOptions defines common pagination and sorting parameters.
+// ListOptions defines common pagination, sorting, and filtering parameters.
 type ListOptions struct {
-	Offset int
-	Limit  int
+	Offset   int
+	Limit    int
+	ArtistID string // Optional filter by artist.
+	AlbumID  string // Optional filter by album.
 }
