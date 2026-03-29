@@ -38,6 +38,7 @@ func TestOpen(t *testing.T) {
 		"users", "refresh_tokens",
 		"playlists", "playlist_tracks",
 		"favorites", "listening_history",
+		"playback_sessions",
 		"schema_migrations",
 	}
 	for _, tbl := range tables {
@@ -83,8 +84,8 @@ func TestOpenIdempotent(t *testing.T) {
 	if err := db2.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("querying schema_migrations: %v", err)
 	}
-	// There are 2 migration files (001_init.sql, 002_fix_fts.sql).
-	if count != 2 {
-		t.Errorf("schema_migrations count = %d after double open, want 2", count)
+	// There are 3 migration files (001_init.sql, 002_fix_fts.sql, 003_playback_sessions.sql).
+	if count != 3 {
+		t.Errorf("schema_migrations count = %d after double open, want 3", count)
 	}
 }

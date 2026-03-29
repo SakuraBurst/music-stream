@@ -14,12 +14,14 @@ web/dist/
 web/.vite/
 
 # iOS
+ios/*.xcodeproj/
 ios/**/*.xcworkspace
 ios/**/xcuserdata/
 ios/**/DerivedData/
-ios/**/*.xcodeproj/project.xcworkspace/
-ios/**/*.xcodeproj/xcuserdata/
+ios/**/build/
 ios/**/Pods/
+ios/**/.build/
+ios/**/.swiftpm/
 
 # Data (runtime)
 *.db

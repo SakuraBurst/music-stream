@@ -22,8 +22,8 @@ import (
 	"github.com/sakuraburst/sonus/internal/store/sqlite"
 )
 
-// supportedExtensions lists audio file extensions the scanner recognizes.
-var supportedExtensions = map[string]bool{
+// SupportedExtensions lists audio file extensions the scanner recognizes.
+var SupportedExtensions = map[string]bool{
 	".flac": true,
 	".mp3":  true,
 	".ogg":  true,
@@ -34,6 +34,14 @@ var supportedExtensions = map[string]bool{
 	".wma":  true,
 	".ape":  true,
 	".opus": true,
+}
+
+// ScanResult reports the outcome of a completed scan.
+type ScanResult struct {
+	New     int           `json:"new"`
+	Updated int           `json:"updated"`
+	Deleted int           `json:"deleted"`
+	Elapsed time.Duration `json:"elapsed"`
 }
 
 // ScanStatus reports current scan progress.
@@ -49,8 +57,8 @@ type fileInfo struct {
 	Size int64
 }
 
-// trackMeta holds metadata extracted from an audio file.
-type trackMeta struct {
+// TrackMeta holds metadata extracted from an audio file.
+type TrackMeta struct {
 	FilePath        string
 	FileSize        int64
 	Title           string
@@ -68,16 +76,19 @@ type trackMeta struct {
 
 // ScannerService handles library scanning: directory walk, metadata extraction, and DB upsert.
 type ScannerService struct {
-	artistStore    *sqlite.ArtistStore
-	albumStore     *sqlite.AlbumStore
-	trackStore     *sqlite.TrackStore
+	artistStore     *sqlite.ArtistStore
+	albumStore      *sqlite.AlbumStore
+	trackStore      *sqlite.TrackStore
 	coverArtService *CoverArtService
-	musicDirs      []string
-	workers        int
-	logger         *slog.Logger
+	musicDirs       []string
+	workers         int
+	logger          *slog.Logger
 
 	mu     sync.Mutex
 	status ScanStatus
+
+	stopTicker chan struct{}
+	tickerDone chan struct{}
 }
 
 // NewScannerService creates a new ScannerService.
@@ -112,11 +123,11 @@ func (s *ScannerService) Status() ScanStatus {
 }
 
 // Scan performs a full library scan. It returns an error if a scan is already in progress.
-func (s *ScannerService) Scan(ctx context.Context) error {
+func (s *ScannerService) Scan(ctx context.Context) (*ScanResult, error) {
 	s.mu.Lock()
 	if s.status.Scanning {
 		s.mu.Unlock()
-		return fmt.Errorf("scan already in progress")
+		return nil, fmt.Errorf("scan already in progress")
 	}
 	s.status = ScanStatus{Scanning: true}
 	s.mu.Unlock()
@@ -133,7 +144,7 @@ func (s *ScannerService) Scan(ctx context.Context) error {
 	// Step 1: Walk directories and collect audio file paths.
 	files, err := s.walkDirs(ctx)
 	if err != nil {
-		return fmt.Errorf("walking directories: %w", err)
+		return nil, fmt.Errorf("walking directories: %w", err)
 	}
 
 	s.mu.Lock()
@@ -145,7 +156,7 @@ func (s *ScannerService) Scan(ctx context.Context) error {
 	// Step 2: Get existing tracks for diff.
 	existingPaths, err := s.trackStore.AllFilePaths(ctx)
 	if err != nil {
-		return fmt.Errorf("fetching existing paths: %w", err)
+		return nil, fmt.Errorf("fetching existing paths: %w", err)
 	}
 
 	// Build set of current file paths.
@@ -157,16 +168,22 @@ func (s *ScannerService) Scan(ctx context.Context) error {
 	// Step 3: Extract metadata with worker pool.
 	metas, err := s.extractAll(ctx, files)
 	if err != nil {
-		return fmt.Errorf("extracting metadata: %w", err)
+		return nil, fmt.Errorf("extracting metadata: %w", err)
 	}
 
 	// Step 4: Upsert artists, albums, tracks.
+	var newTracks, updatedTracks int
 	affectedAlbums := make(map[string]bool)
 	for _, meta := range metas {
-		albumID, err := s.upsertTrack(ctx, meta)
+		albumID, created, err := s.upsertTrack(ctx, meta)
 		if err != nil {
 			s.logger.Error("failed to upsert track", "path", meta.FilePath, "error", err)
 			continue
+		}
+		if created {
+			newTracks++
+		} else {
+			updatedTracks++
 		}
 		if albumID != "" {
 			affectedAlbums[albumID] = true
@@ -174,11 +191,13 @@ func (s *ScannerService) Scan(ctx context.Context) error {
 	}
 
 	// Step 5: Cleanup deleted files.
+	var deletedTracks int
 	for path, id := range existingPaths {
 		if !currentPaths[path] {
 			if err := s.trackStore.Delete(ctx, id); err != nil {
 				s.logger.Error("failed to delete removed track", "path", path, "error", err)
 			} else {
+				deletedTracks++
 				s.logger.Info("removed track for missing file", "path", path)
 			}
 		}
@@ -237,13 +256,21 @@ func (s *ScannerService) Scan(ctx context.Context) error {
 		s.logger.Error("failed to rebuild FTS index", "error", err)
 	}
 
+	elapsed := time.Since(start)
 	s.logger.Info("library scan completed",
-		"duration", time.Since(start).String(),
+		"duration", elapsed.String(),
 		"files_found", len(files),
-		"tracks_processed", len(metas),
+		"tracks_new", newTracks,
+		"tracks_updated", updatedTracks,
+		"tracks_deleted", deletedTracks,
 	)
 
-	return nil
+	return &ScanResult{
+		New:     newTracks,
+		Updated: updatedTracks,
+		Deleted: deletedTracks,
+		Elapsed: elapsed,
+	}, nil
 }
 
 // walkDirs walks all configured music directories and collects audio file paths.
@@ -266,7 +293,7 @@ func (s *ScannerService) walkDirs(ctx context.Context) ([]fileInfo, error) {
 			}
 
 			ext := strings.ToLower(filepath.Ext(path))
-			if !supportedExtensions[ext] {
+			if !SupportedExtensions[ext] {
 				return nil
 			}
 
@@ -288,9 +315,9 @@ func (s *ScannerService) walkDirs(ctx context.Context) ([]fileInfo, error) {
 }
 
 // extractAll extracts metadata from all files using a worker pool.
-func (s *ScannerService) extractAll(ctx context.Context, files []fileInfo) ([]trackMeta, error) {
+func (s *ScannerService) extractAll(ctx context.Context, files []fileInfo) ([]TrackMeta, error) {
 	type result struct {
-		meta trackMeta
+		meta TrackMeta
 		err  error
 	}
 
@@ -332,7 +359,7 @@ func (s *ScannerService) extractAll(ctx context.Context, files []fileInfo) ([]tr
 	}()
 
 	// Collect results.
-	var metas []trackMeta
+	var metas []TrackMeta
 	for r := range out {
 		if r.err != nil {
 			s.logger.Warn("metadata extraction failed", "path", r.meta.FilePath, "error", r.err)
@@ -344,25 +371,26 @@ func (s *ScannerService) extractAll(ctx context.Context, files []fileInfo) ([]tr
 	return metas, nil
 }
 
-// extractMeta extracts metadata from a single audio file.
+// ExtractMeta extracts metadata from a single audio file.
 // Uses dhowden/tag for tag metadata and ffprobe for duration (and as fallback for tags).
-func (s *ScannerService) extractMeta(ctx context.Context, fi fileInfo) (trackMeta, error) {
-	meta := trackMeta{
-		FilePath: fi.Path,
-		FileSize: fi.Size,
-		Format:   strings.TrimPrefix(strings.ToLower(filepath.Ext(fi.Path)), "."),
+// This is a package-level function so both scanner and upload services can use it.
+func ExtractMeta(ctx context.Context, filePath string, fileSize int64, logger *slog.Logger) (TrackMeta, error) {
+	meta := TrackMeta{
+		FilePath: filePath,
+		FileSize: fileSize,
+		Format:   strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), "."),
 	}
 
 	// Try dhowden/tag first.
-	tagOK := s.extractTagMeta(&meta)
+	tagOK := extractTagMeta(&meta)
 
 	// ffprobe for duration (always) and as fallback for metadata.
-	s.extractFFprobeMeta(ctx, &meta, !tagOK)
+	extractFFprobeMeta(ctx, &meta, !tagOK, logger)
 
 	// Ensure we have at least a title.
 	if meta.Title == "" {
 		// Use filename without extension as title.
-		meta.Title = strings.TrimSuffix(filepath.Base(fi.Path), filepath.Ext(fi.Path))
+		meta.Title = strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
 	}
 
 	// Default disc number.
@@ -373,8 +401,13 @@ func (s *ScannerService) extractMeta(ctx context.Context, fi fileInfo) (trackMet
 	return meta, nil
 }
 
+// extractMeta is the ScannerService method that delegates to the package-level ExtractMeta.
+func (s *ScannerService) extractMeta(ctx context.Context, fi fileInfo) (TrackMeta, error) {
+	return ExtractMeta(ctx, fi.Path, fi.Size, s.logger)
+}
+
 // extractTagMeta extracts metadata using dhowden/tag. Returns true if successful.
-func (s *ScannerService) extractTagMeta(meta *trackMeta) bool {
+func extractTagMeta(meta *TrackMeta) bool {
 	f, err := os.Open(meta.FilePath)
 	if err != nil {
 		return false
@@ -414,7 +447,7 @@ type ffprobeResult struct {
 }
 
 // extractFFprobeMeta extracts duration and optionally tag metadata from ffprobe.
-func (s *ScannerService) extractFFprobeMeta(ctx context.Context, meta *trackMeta, useTags bool) {
+func extractFFprobeMeta(ctx context.Context, meta *TrackMeta, useTags bool, logger *slog.Logger) {
 	cmd := exec.CommandContext(ctx, "ffprobe",
 		"-v", "quiet",
 		"-print_format", "json",
@@ -425,13 +458,13 @@ func (s *ScannerService) extractFFprobeMeta(ctx context.Context, meta *trackMeta
 
 	output, err := cmd.Output()
 	if err != nil {
-		s.logger.Debug("ffprobe failed", "path", meta.FilePath, "error", err)
+		logger.Debug("ffprobe failed", "path", meta.FilePath, "error", err)
 		return
 	}
 
 	var result ffprobeResult
 	if err := json.Unmarshal(output, &result); err != nil {
-		s.logger.Debug("ffprobe JSON parse failed", "path", meta.FilePath, "error", err)
+		logger.Debug("ffprobe JSON parse failed", "path", meta.FilePath, "error", err)
 		return
 	}
 
@@ -494,9 +527,10 @@ func (s *ScannerService) extractFFprobeMeta(ctx context.Context, meta *trackMeta
 	}
 }
 
-// upsertTrack creates or updates an artist, album, and track for the given metadata.
-// Returns the album ID for stats recalculation.
-func (s *ScannerService) upsertTrack(ctx context.Context, meta trackMeta) (string, error) {
+// UpsertTrack creates or updates an artist, album, and track for the given metadata.
+// Returns the album ID for stats recalculation, whether the track was newly created, and any error.
+// This is a package-level function so both scanner and upload services can use it.
+func UpsertTrack(ctx context.Context, meta TrackMeta, artistStore *sqlite.ArtistStore, albumStore *sqlite.AlbumStore, trackStore *sqlite.TrackStore) (string, bool, error) {
 	now := time.Now()
 
 	// Determine artist name: default to "Unknown Artist".
@@ -506,9 +540,9 @@ func (s *ScannerService) upsertTrack(ctx context.Context, meta trackMeta) (strin
 	}
 
 	// Upsert artist.
-	artist, err := s.artistStore.GetByName(ctx, artistName)
+	artist, err := artistStore.GetByName(ctx, artistName)
 	if err != nil {
-		return "", fmt.Errorf("looking up artist %q: %w", artistName, err)
+		return "", false, fmt.Errorf("looking up artist %q: %w", artistName, err)
 	}
 	if artist == nil {
 		artist = &model.Artist{
@@ -517,8 +551,8 @@ func (s *ScannerService) upsertTrack(ctx context.Context, meta trackMeta) (strin
 			SortName:  sortName(artistName),
 			CreatedAt: now,
 		}
-		if err := s.artistStore.Create(ctx, artist); err != nil {
-			return "", fmt.Errorf("creating artist %q: %w", artistName, err)
+		if err := artistStore.Create(ctx, artist); err != nil {
+			return "", false, fmt.Errorf("creating artist %q: %w", artistName, err)
 		}
 	}
 
@@ -529,9 +563,9 @@ func (s *ScannerService) upsertTrack(ctx context.Context, meta trackMeta) (strin
 	}
 
 	// Upsert album.
-	album, err := s.albumStore.GetByArtistAndName(ctx, artist.ID, albumName)
+	album, err := albumStore.GetByArtistAndName(ctx, artist.ID, albumName)
 	if err != nil {
-		return "", fmt.Errorf("looking up album %q: %w", albumName, err)
+		return "", false, fmt.Errorf("looking up album %q: %w", albumName, err)
 	}
 	if album == nil {
 		album = &model.Album{
@@ -542,8 +576,8 @@ func (s *ScannerService) upsertTrack(ctx context.Context, meta trackMeta) (strin
 			Genre:     meta.Genre,
 			CreatedAt: now,
 		}
-		if err := s.albumStore.Create(ctx, album); err != nil {
-			return "", fmt.Errorf("creating album %q: %w", albumName, err)
+		if err := albumStore.Create(ctx, album); err != nil {
+			return "", false, fmt.Errorf("creating album %q: %w", albumName, err)
 		}
 	} else {
 		// Update album metadata if we have better data.
@@ -557,16 +591,16 @@ func (s *ScannerService) upsertTrack(ctx context.Context, meta trackMeta) (strin
 			changed = true
 		}
 		if changed {
-			if err := s.albumStore.Update(ctx, album); err != nil {
-				return "", fmt.Errorf("updating album %q: %w", albumName, err)
+			if err := albumStore.Update(ctx, album); err != nil {
+				return "", false, fmt.Errorf("updating album %q: %w", albumName, err)
 			}
 		}
 	}
 
 	// Upsert track.
-	existing, err := s.trackStore.GetByFilePath(ctx, meta.FilePath)
+	existing, err := trackStore.GetByFilePath(ctx, meta.FilePath)
 	if err != nil {
-		return "", fmt.Errorf("looking up track by path: %w", err)
+		return "", false, fmt.Errorf("looking up track by path: %w", err)
 	}
 
 	if existing != nil {
@@ -583,33 +617,96 @@ func (s *ScannerService) upsertTrack(ctx context.Context, meta trackMeta) (strin
 		existing.SampleRate = meta.SampleRate
 		existing.UpdatedAt = now
 
-		if err := s.trackStore.Update(ctx, existing); err != nil {
-			return "", fmt.Errorf("updating track: %w", err)
+		if err := trackStore.Update(ctx, existing); err != nil {
+			return "", false, fmt.Errorf("updating track: %w", err)
 		}
-	} else {
-		// Create new track.
-		track := &model.Track{
-			ID:              uuid.New().String(),
-			AlbumID:         album.ID,
-			ArtistID:        artist.ID,
-			Title:           meta.Title,
-			TrackNumber:     meta.TrackNumber,
-			DiscNumber:      meta.DiscNumber,
-			DurationSeconds: meta.DurationSeconds,
-			FilePath:        meta.FilePath,
-			FileSize:        meta.FileSize,
-			Format:          meta.Format,
-			Bitrate:         meta.Bitrate,
-			SampleRate:      meta.SampleRate,
-			CreatedAt:       now,
-			UpdatedAt:       now,
-		}
-		if err := s.trackStore.Create(ctx, track); err != nil {
-			return "", fmt.Errorf("creating track: %w", err)
-		}
+		return album.ID, false, nil
 	}
 
-	return album.ID, nil
+	// Create new track.
+	track := &model.Track{
+		ID:              uuid.New().String(),
+		AlbumID:         album.ID,
+		ArtistID:        artist.ID,
+		Title:           meta.Title,
+		TrackNumber:     meta.TrackNumber,
+		DiscNumber:      meta.DiscNumber,
+		DurationSeconds: meta.DurationSeconds,
+		FilePath:        meta.FilePath,
+		FileSize:        meta.FileSize,
+		Format:          meta.Format,
+		Bitrate:         meta.Bitrate,
+		SampleRate:      meta.SampleRate,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := trackStore.Create(ctx, track); err != nil {
+		return "", false, fmt.Errorf("creating track: %w", err)
+	}
+
+	return album.ID, true, nil
+}
+
+// upsertTrack is the ScannerService method that delegates to the package-level UpsertTrack.
+func (s *ScannerService) upsertTrack(ctx context.Context, meta TrackMeta) (string, bool, error) {
+	return UpsertTrack(ctx, meta, s.artistStore, s.albumStore, s.trackStore)
+}
+
+// StartPeriodicScan starts a background goroutine that runs a library scan at the
+// given interval. If interval is zero or negative, periodic scanning is disabled.
+// The goroutine stops when StopPeriodicScan is called or the context is cancelled.
+func (s *ScannerService) StartPeriodicScan(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		s.logger.Info("periodic library scanning disabled (scan_interval = 0)")
+		return
+	}
+
+	s.stopTicker = make(chan struct{})
+	s.tickerDone = make(chan struct{})
+
+	s.logger.Info("starting periodic library scanner", "interval", interval.String())
+
+	go func() {
+		defer close(s.tickerDone)
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				s.logger.Info("periodic scan triggered")
+				result, err := s.Scan(ctx)
+				if err != nil {
+					s.logger.Error("periodic scan failed", "error", err)
+				} else {
+					s.logger.Info("periodic scan finished",
+						"new", result.New,
+						"updated", result.Updated,
+						"deleted", result.Deleted,
+						"elapsed", result.Elapsed.String(),
+					)
+				}
+			case <-s.stopTicker:
+				s.logger.Info("periodic library scanner stopped")
+				return
+			case <-ctx.Done():
+				s.logger.Info("periodic library scanner stopped (context cancelled)")
+				return
+			}
+		}
+	}()
+}
+
+// StopPeriodicScan signals the periodic scan goroutine to stop and waits for
+// the current scan (if any) to finish before returning.
+func (s *ScannerService) StopPeriodicScan() {
+	if s.stopTicker == nil {
+		return
+	}
+
+	close(s.stopTicker)
+	<-s.tickerDone
 }
 
 // sortName generates a sort-friendly name by stripping common prefixes.
@@ -621,6 +718,32 @@ func sortName(name string) string {
 		}
 	}
 	return ""
+}
+
+// MetadataOverride holds user-provided metadata fields that override tag-extracted values.
+// Only non-zero/non-empty fields take effect.
+type MetadataOverride struct {
+	Filename    string `json:"filename"`
+	Title       string `json:"title,omitempty"`
+	Artist      string `json:"artist,omitempty"`
+	Album       string `json:"album,omitempty"`
+	TrackNumber int    `json:"track_number,omitempty"`
+}
+
+// ApplyOverride overwrites TrackMeta fields with non-empty values from the override.
+func (m *TrackMeta) ApplyOverride(o MetadataOverride) {
+	if o.Title != "" {
+		m.Title = o.Title
+	}
+	if o.Artist != "" {
+		m.Artist = o.Artist
+	}
+	if o.Album != "" {
+		m.Album = o.Album
+	}
+	if o.TrackNumber != 0 {
+		m.TrackNumber = o.TrackNumber
+	}
 }
 
 // firstNonEmpty returns the first non-empty string from the arguments.

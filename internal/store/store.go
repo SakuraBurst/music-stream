@@ -78,6 +78,12 @@ type HistoryStore interface {
 	ListByUser(ctx context.Context, userID string, opts ListOptions) ([]model.ListeningHistory, int, error)
 }
 
+// SessionStore provides access to playback session data.
+type SessionStore interface {
+	Upsert(ctx context.Context, session *model.PlaybackSession) error
+	GetByUserID(ctx context.Context, userID string) (*model.PlaybackSession, error)
+}
+
 // ListOptions defines common pagination, sorting, and filtering parameters.
 type ListOptions struct {
 	Offset   int

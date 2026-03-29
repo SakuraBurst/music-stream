@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore.ts';
 import { usePlayerStore } from '../../store/playerStore.ts';
 import { recordHistory } from '../../api/history.ts';
 import type { TrackResponse } from '../../types/index.ts';
+import { initAudioAnalyser, resumeAudioContext } from './audioAnalyser.ts';
 
 /** Threshold in seconds: record history after this much playback. */
 const HISTORY_THRESHOLD = 30;
@@ -45,6 +46,10 @@ export default function PlayerProvider() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !currentTrack) return;
+
+    // Lazily wire up Web Audio analyser on first play (requires user gesture).
+    initAudioAnalyser(audio);
+    resumeAudioContext();
 
     // Reset history tracking for new track
     historyState.trackId = currentTrack.id;

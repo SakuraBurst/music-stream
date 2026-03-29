@@ -1,0 +1,30 @@
+# Xcode
+*.xcodeproj/
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# Build
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Dependencies
+Pods/
+Carthage/Build/
+.build/
+.swiftpm/
+
+# OS
+.DS_Store
+*.swp
+*~.nib
+
+# Provisioning
+*.mobileprovision
+*.provisionprofile

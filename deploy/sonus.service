@@ -1,0 +1,70 @@
+# Sonus — systemd service unit
+#
+# Installation:
+#   1. Build the binary:  make build  (or go build -o sonus ./cmd/server)
+#   2. Copy binary:       sudo cp sonus /usr/local/bin/sonus
+#   3. Create user:       sudo useradd -r -s /usr/sbin/nologin -d /var/lib/sonus sonus
+#   4. Create data dir:   sudo mkdir -p /var/lib/sonus && sudo chown sonus:sonus /var/lib/sonus
+#   5. (Optional) Create config: sudo cp sonus.toml /etc/sonus/sonus.toml
+#   6. Install unit:      sudo cp deploy/sonus.service /etc/systemd/system/sonus.service
+#   7. Enable + start:    sudo systemctl enable --now sonus
+#
+# Configuration:
+#   The service reads from /etc/sonus/sonus.toml if it exists.
+#   Override environment variables in /etc/sonus/sonus.env (one VAR=VALUE per line).
+#   At minimum, set SONUS_LIBRARY_MUSIC_DIRS to your music library path(s).
+#
+# Logs:
+#   journalctl -u sonus -f
+#
+# Data directory (/var/lib/sonus) stores:
+#   - sonus.db          SQLite database
+#   - coverart/         Extracted album art
+#   - cache/transcoded/ Transcoded audio cache
+
+[Unit]
+Description=Sonus Music Streaming Server
+Documentation=https://github.com/sakuraburst/sonus
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sonus
+Group=sonus
+
+# Binary location.
+ExecStart=/usr/local/bin/sonus
+
+# Data directory — SQLite DB, cover art, transcode cache.
+Environment=SONUS_SERVER_DATA_DIR=/var/lib/sonus
+
+# Config file location (optional — env vars and flags also work).
+Environment=SONUS_CONFIG_FILE=/etc/sonus/sonus.toml
+
+# Additional environment variables can be placed here (one per line):
+EnvironmentFile=-/etc/sonus/sonus.env
+
+# Restart on crash, but not on clean exit (e.g., SIGTERM).
+Restart=on-failure
+RestartSec=5
+
+# Security hardening.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/sonus
+
+# Allow binding to privileged ports (80/443) if needed.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Limit resources (adjust as needed).
+LimitNOFILE=65536
+
+# Graceful shutdown — the server handles SIGTERM.
+TimeoutStopSec=30
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

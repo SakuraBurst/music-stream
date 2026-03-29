@@ -112,6 +112,21 @@ func (s *CoverArtService) ExtractForAlbum(ctx context.Context, albumID string) (
 	return "", nil
 }
 
+// SaveCustomCoverArt saves user-provided cover art bytes for the given album.
+// It writes the data to <coverDir>/<albumID>.jpg and returns the path.
+func (s *CoverArtService) SaveCustomCoverArt(albumID string, data []byte) (string, error) {
+	if err := os.MkdirAll(s.coverDir, 0755); err != nil {
+		return "", fmt.Errorf("creating coverart directory: %w", err)
+	}
+
+	coverPath := filepath.Join(s.coverDir, albumID+".jpg")
+	if err := os.WriteFile(coverPath, data, 0644); err != nil {
+		return "", fmt.Errorf("writing custom cover art: %w", err)
+	}
+
+	return coverPath, nil
+}
+
 // extractEmbeddedArt tries to extract embedded album art from an audio file using dhowden/tag.
 // Returns true if art was extracted and saved successfully.
 func (s *CoverArtService) extractEmbeddedArt(audioPath, destPath string) bool {

@@ -27,7 +27,7 @@ func (h *AdminHandler) StartScan(w http.ResponseWriter, r *http.Request) {
 	// Launch scan in a background goroutine with a detached context
 	// so the scan is not cancelled when the HTTP response is sent.
 	go func() {
-		if err := h.scanner.Scan(context.Background()); err != nil {
+		if _, err := h.scanner.Scan(context.Background()); err != nil {
 			h.logger.Error("library scan failed", "error", err)
 		}
 	}()

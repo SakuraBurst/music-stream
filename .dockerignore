@@ -1,0 +1,52 @@
+# Keep Docker build context small and avoid leaking secrets.
+#
+# The Dockerfile copies only what it needs explicitly (go.mod, go.sum, cmd/,
+# internal/, pkg/, web/). This file excludes everything else from the context.
+
+# Version control
+.git
+.gitignore
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Runtime data — never ship user data into the image
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Node modules — reinstalled during build
+web/node_modules/
+
+# Frontend build output — rebuilt in Docker
+web/dist/
+
+# iOS — not relevant for server image
+ios/
+
+# TUI — separate binary, not needed in server image
+cmd/tui/
+tui/
+
+# macOS artifacts
+.DS_Store
+
+# Environment files — may contain secrets
+.env
+.env.local
+
+# Documentation and scripts
+docs/
+README.md
+
+# Beads issue tracker
+.beads/
+.dolt/
+
+# Claude agent memory
+.claude/

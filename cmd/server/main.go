@@ -60,6 +60,7 @@ func main() {
 	playlistStore := sqlite.NewPlaylistStore(db)
 	favoriteStore := sqlite.NewFavoriteStore(db)
 	historyStore := sqlite.NewHistoryStore(db)
+	sessionStore := sqlite.NewSessionStore(db)
 
 	// Create services.
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, cfg.Auth.ParsedAccessTokenTTL())
@@ -85,6 +86,9 @@ func main() {
 		logger,
 	)
 
+	uploadsDir := filepath.Join(cfg.Server.DataDir, "uploads")
+	uploadService := service.NewUploadService(artistStore, albumStore, trackStore, coverArtService, uploadsDir, logger)
+
 	libraryService := service.NewLibraryService(artistStore, albumStore, trackStore)
 	streamService := service.NewStreamService(trackStore)
 	cacheMaxSize := cfg.Transcoding.ParsedCacheMaxSize()
@@ -105,8 +109,10 @@ func main() {
 		CoverArtService:   coverArtService,
 		SearchService:     searchService,
 		PlaylistService:   playlistService,
+		UploadService:     uploadService,
 		FavoriteStore:     favoriteStore,
 		HistoryStore:      historyStore,
+		SessionStore:      sessionStore,
 	})
 
 	// Start transcode cache evictor.
@@ -116,11 +122,15 @@ func main() {
 	if cfg.Library.ScanOnStartup && len(cfg.Library.MusicDirs) > 0 {
 		go func() {
 			logger.Info("starting library scan on startup")
-			if err := scannerService.Scan(context.Background()); err != nil {
+			if _, err := scannerService.Scan(context.Background()); err != nil {
 				logger.Error("startup scan failed", "error", err)
 			}
 		}()
 	}
+
+	// Start periodic library scanning.
+	scanInterval := cfg.Library.ParsedScanInterval()
+	scannerService.StartPeriodicScan(context.Background(), scanInterval)
 
 	srv := &http.Server{
 		Addr:         cfg.Server.Address,
@@ -153,6 +163,9 @@ func main() {
 		logger.Error("server shutdown error", "error", err)
 		os.Exit(1)
 	}
+
+	// Stop periodic scanner and wait for any in-progress scan to finish.
+	scannerService.StopPeriodicScan()
 
 	// Stop the transcode cache evictor.
 	transcoderService.StopCacheEvictor()

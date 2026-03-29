@@ -39,6 +39,7 @@ export default function PlayerBar() {
   const shuffle = usePlayerStore((s) => s.shuffle);
   const repeat = usePlayerStore((s) => s.repeat);
   const queueOpen = usePlayerStore((s) => s.queueOpen);
+  const expandedOpen = usePlayerStore((s) => s.expandedOpen);
 
   const pause = usePlayerStore((s) => s.pause);
   const resume = usePlayerStore((s) => s.resume);
@@ -49,6 +50,8 @@ export default function PlayerBar() {
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const toggleRepeat = usePlayerStore((s) => s.toggleRepeat);
   const toggleQueue = usePlayerStore((s) => s.toggleQueue);
+  const toggleExpanded = usePlayerStore((s) => s.toggleExpanded);
+  const openZen = usePlayerStore((s) => s.openZen);
 
   const handleSeek = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,8 +95,13 @@ export default function PlayerBar() {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Track info */}
-        <div className="flex items-center gap-3 min-w-0 w-1/4">
+        {/* Track info — click to open Zen player */}
+        <button
+          onClick={openZen}
+          className="flex items-center gap-3 min-w-0 w-1/4 text-left hover:bg-white/5 rounded-md -ml-2 pl-2 pr-2 py-1 transition-colors cursor-pointer"
+          aria-label="Open fullscreen player"
+          title="Open fullscreen player"
+        >
           <div className="w-10 h-10 shrink-0 rounded bg-zinc-800 overflow-hidden">
             <img
               src={coverArtUrl(currentTrack.albumId)}
@@ -108,7 +116,7 @@ export default function PlayerBar() {
             <p className="text-sm text-zinc-100 truncate">{currentTrack.title}</p>
             <p className="text-xs text-zinc-400 truncate">{currentTrack.artistName}</p>
           </div>
-        </div>
+        </button>
 
         {/* Transport controls (center) */}
         <div className="flex items-center justify-center gap-3 flex-1">
@@ -217,10 +225,26 @@ export default function PlayerBar() {
             />
           </div>
 
+          {/* Expanded player toggle */}
+          <button
+            onClick={toggleExpanded}
+            className={`text-xs px-2 py-1 rounded transition-colors cursor-pointer ${
+              expandedOpen
+                ? 'text-white bg-white/10'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+            aria-label="Now Playing"
+            title="Now Playing"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+              <path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zM5 15h14v2H5zm0-4h14v2H5zm0-4h14v2H5z" />
+            </svg>
+          </button>
+
           {/* Queue toggle */}
           <button
             onClick={toggleQueue}
-            className={`text-xs px-2 py-1 rounded transition-colors ${
+            className={`text-xs px-2 py-1 rounded transition-colors cursor-pointer ${
               queueOpen
                 ? 'text-white bg-white/10'
                 : 'text-zinc-500 hover:text-zinc-300'

@@ -17,6 +17,10 @@ export interface PlayerState {
   repeat: RepeatMode;
   /** Whether the queue side-panel is visible. */
   queueOpen: boolean;
+  /** Whether the fullscreen Zen player overlay is open. */
+  zenOpen: boolean;
+  /** Whether the expanded "Now Playing" sidebar is open. */
+  expandedOpen: boolean;
 
   // --- actions ---
   /** Start playing a track. If `queue` and `queueIndex` are given, sets the full queue. */
@@ -30,11 +34,51 @@ export interface PlayerState {
   toggleShuffle: () => void;
   toggleRepeat: () => void;
   toggleQueue: () => void;
+  openZen: () => void;
+  closeZen: () => void;
+  toggleZen: () => void;
+  openExpanded: () => void;
+  closeExpanded: () => void;
+  toggleExpanded: () => void;
+  /** Restore playback state from a server-side session (paused). */
+  restoreSession: (opts: {
+    track: TrackResponse;
+    queue: TrackResponse[];
+    queueIndex: number;
+    position: number;
+    volume: number;
+    shuffle: boolean;
+    repeat: RepeatMode;
+  }) => void;
+
   /** Called by audio events — not intended for UI. */
   _setProgress: (seconds: number) => void;
   _setDuration: (seconds: number) => void;
   _setIsPlaying: (v: boolean) => void;
   _onTrackEnded: () => void;
+}
+
+const VOLUME_STORAGE_KEY = 'sonus:volume';
+
+function loadVolume(): number {
+  try {
+    const raw = localStorage.getItem(VOLUME_STORAGE_KEY);
+    if (raw === null) return 1;
+    const parsed = Number(raw);
+    if (Number.isNaN(parsed)) return 1;
+    return Math.max(0, Math.min(1, parsed));
+  } catch {
+    // localStorage may be unavailable (private browsing, storage quota, etc.)
+    return 1;
+  }
+}
+
+function saveVolume(v: number): void {
+  try {
+    localStorage.setItem(VOLUME_STORAGE_KEY, String(v));
+  } catch {
+    // Silently ignore — private browsing or quota exceeded
+  }
 }
 
 /**
@@ -57,12 +101,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   queue: [],
   queueIndex: 0,
   isPlaying: false,
-  volume: 1,
+  volume: loadVolume(),
   progress: 0,
   duration: 0,
   shuffle: false,
   repeat: 'none',
   queueOpen: false,
+  zenOpen: false,
+  expandedOpen: false,
 
   play: (track, queue, queueIndex) => {
     const newQueue = queue ?? [track];
@@ -142,7 +188,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   seek: (seconds) => set({ progress: seconds }),
 
-  setVolume: (v) => set({ volume: Math.max(0, Math.min(1, v)) }),
+  setVolume: (v) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    saveVolume(clamped);
+    set({ volume: clamped });
+  },
 
   toggleShuffle: () => {
     const { shuffle, queue, queueIndex, currentTrack } = get();
@@ -163,6 +213,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   toggleQueue: () => set((s) => ({ queueOpen: !s.queueOpen })),
+
+  openZen: () => set({ zenOpen: true }),
+  closeZen: () => set({ zenOpen: false }),
+  toggleZen: () => set((s) => ({ zenOpen: !s.zenOpen })),
+
+  openExpanded: () => set({ expandedOpen: true }),
+  closeExpanded: () => set({ expandedOpen: false }),
+  toggleExpanded: () => set((s) => ({ expandedOpen: !s.expandedOpen })),
+
+  restoreSession: (opts) => {
+    saveVolume(opts.volume);
+    set({
+      currentTrack: opts.track,
+      queue: opts.queue,
+      queueIndex: opts.queueIndex,
+      isPlaying: false, // Restored sessions start paused; user confirms playback.
+      progress: opts.position,
+      duration: 0,
+      volume: opts.volume,
+      shuffle: opts.shuffle,
+      repeat: opts.repeat,
+    });
+  },
 
   _setProgress: (seconds) => set({ progress: seconds }),
   _setDuration: (seconds) => set({ duration: seconds }),

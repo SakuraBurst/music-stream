@@ -28,8 +28,11 @@ type Deps struct {
 	CoverArtService    *service.CoverArtService
 	SearchService      *service.SearchService
 	PlaylistService    *service.PlaylistService
+	UploadService      *service.UploadService
 	FavoriteStore      *sqlite.FavoriteStore
 	HistoryStore       *sqlite.HistoryStore
+	SessionStore       *sqlite.SessionStore
+	MaxUploadBytes     int64 // 0 means default (500 MB)
 }
 
 // NewRouter creates and configures the chi router with middleware and routes.
@@ -56,6 +59,8 @@ func NewRouter(deps Deps) http.Handler {
 	playlistHandler := handler.NewPlaylistHandler(deps.PlaylistService, deps.Logger)
 	favoritesHandler := handler.NewFavoritesHandler(deps.FavoriteStore, deps.Logger)
 	historyHandler := handler.NewHistoryHandler(deps.HistoryStore, deps.Logger)
+	sessionHandler := handler.NewSessionHandler(deps.SessionStore, deps.Logger)
+	uploadHandler := handler.NewUploadHandler(deps.UploadService, deps.MaxUploadBytes, deps.Logger)
 	authMiddleware := middleware.Auth(deps.TokenManager)
 
 	// API v1 routes
@@ -97,6 +102,13 @@ func NewRouter(deps Deps) http.Handler {
 			// History
 			r.Get("/history", historyHandler.List)
 			r.Post("/history", historyHandler.Add)
+
+			// Playback session sync
+			r.Put("/session", sessionHandler.Save)
+			r.Get("/session", sessionHandler.Get)
+
+			// Upload
+			r.Post("/upload", uploadHandler.Upload)
 
 			// Streaming
 			r.Get("/stream/{trackID}", streamHandler.Stream)

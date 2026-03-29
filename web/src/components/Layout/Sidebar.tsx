@@ -18,6 +18,7 @@ const navItems: NavItem[] = [
   { to: '/favorites', label: 'Favorites' },
   { to: '/history', label: 'History' },
   { to: '/search', label: 'Search' },
+  { to: '/upload', label: 'Upload' },
 ];
 
 function linkClass({ isActive }: { isActive: boolean }): string {

@@ -1,1 +1,66 @@
 @import "tailwindcss";
+
+/* Zen player — lava lamp blob animations.
+   Each blob drifts on its own independent multi-point path
+   with different durations so they never synchronise. */
+
+@keyframes lavaBlob1 {
+  0% {
+    transform: translate(0%, 0%) scale(1) rotate(0deg);
+    border-radius: 45% 55% 50% 50% / 50% 45% 55% 50%;
+  }
+  25% {
+    transform: translate(30%, 20%) scale(1.1) rotate(15deg);
+    border-radius: 50% 45% 55% 45% / 45% 50% 50% 55%;
+  }
+  50% {
+    transform: translate(15%, 45%) scale(0.95) rotate(-10deg);
+    border-radius: 55% 50% 45% 50% / 50% 55% 45% 50%;
+  }
+  75% {
+    transform: translate(40%, 10%) scale(1.05) rotate(5deg);
+    border-radius: 45% 50% 55% 50% / 55% 45% 50% 50%;
+  }
+  100% {
+    transform: translate(0%, 0%) scale(1) rotate(0deg);
+    border-radius: 45% 55% 50% 50% / 50% 45% 55% 50%;
+  }
+}
+
+@keyframes lavaBlob2 {
+  0% {
+    transform: translate(0%, 0%) scale(1) rotate(0deg);
+    border-radius: 50% 45% 55% 50% / 55% 50% 45% 50%;
+  }
+  20% {
+    transform: translate(-25%, -15%) scale(1.08) rotate(-12deg);
+    border-radius: 45% 55% 50% 50% / 50% 45% 55% 50%;
+  }
+  45% {
+    transform: translate(-35%, -35%) scale(0.92) rotate(8deg);
+    border-radius: 55% 50% 45% 55% / 45% 55% 50% 45%;
+  }
+  70% {
+    transform: translate(-10%, -40%) scale(1.05) rotate(-5deg);
+    border-radius: 50% 55% 45% 50% / 50% 45% 55% 50%;
+  }
+  100% {
+    transform: translate(0%, 0%) scale(1) rotate(0deg);
+    border-radius: 50% 45% 55% 50% / 55% 50% 45% 50%;
+  }
+}
+
+@keyframes lavaBlob3 {
+  0% {
+    transform: translate(0%, 0%) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(-20%, 25%) scale(1.15) rotate(20deg);
+  }
+  66% {
+    transform: translate(20%, -15%) scale(0.9) rotate(-15deg);
+  }
+  100% {
+    transform: translate(0%, 0%) scale(1) rotate(0deg);
+  }
+}
