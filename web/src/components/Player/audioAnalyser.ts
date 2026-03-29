@@ -34,8 +34,8 @@ export function initAudioAnalyser(audio: HTMLAudioElement): boolean {
   try {
     audioCtx = new AudioContext();
     analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256; // 128 frequency bins
-    analyser.smoothingTimeConstant = 0.8;
+    analyser.fftSize = 2048; // 1024 frequency bins — better resolution
+    analyser.smoothingTimeConstant = 0.7;
 
     sourceNode = audioCtx.createMediaElementSource(audio);
     sourceNode.connect(analyser);

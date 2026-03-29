@@ -32,6 +32,7 @@ const FALL_SPEED = 0.97; // slow decay  (higher = slower, gravity-like)
 // ---------------------------------------------------------------------------
 
 let cachedMapping: number[][] | null = null;
+let cachedBinCount = 0;
 
 function binToBarMapping(binCount: number, barCount: number): number[][] {
   const mapping: number[][] = [];
@@ -53,8 +54,9 @@ function binToBarMapping(binCount: number, barCount: number): number[][] {
 }
 
 function getMapping(binCount: number): number[][] {
-  if (!cachedMapping) {
+  if (!cachedMapping || cachedBinCount !== binCount) {
     cachedMapping = binToBarMapping(binCount, BAR_COUNT);
+    cachedBinCount = binCount;
   }
   return cachedMapping;
 }
@@ -155,18 +157,34 @@ export default function AudioVisualizer({
       const h = canvas.height;
       ctx.clearRect(0, 0, w, h);
 
-      // Get raw FFT values (0 if no analyser or paused → bars will decay)
+      // Get FFT values with dB scaling and frequency compensation
       let rawValues: Float32Array | null = null;
       if (analyser) {
         const data = new Uint8Array(analyser.frequencyBinCount);
         analyser.getByteFrequencyData(data);
         const mapping = getMapping(analyser.frequencyBinCount);
         rawValues = new Float32Array(BAR_COUNT);
+
         for (let i = 0; i < BAR_COUNT; i++) {
           const bins = mapping[i];
-          let sum = 0;
-          for (const idx of bins) sum += data[idx];
-          rawValues[i] = sum / bins.length / 255;
+
+          // Use peak (max) value in each bin group, not average.
+          // This preserves the spiky, varied character like cava/kurve,
+          // instead of smoothing treble peaks into nothing.
+          let peak = 0;
+          for (const idx of bins) {
+            if (data[idx] > peak) peak = data[idx];
+          }
+
+          // Power-curve compression: sqrt-ish to tame bass without killing it
+          const linear = peak / 255;
+          const compressed = Math.pow(linear, 0.55);
+
+          // Frequency tilt: gentle bass cut + treble boost
+          const t = i / (BAR_COUNT - 1);
+          const freqTilt = 0.75 + 0.5 * t;
+
+          rawValues[i] = Math.min(1, compressed * freqTilt);
         }
       }
 
