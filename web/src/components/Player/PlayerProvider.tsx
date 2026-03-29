@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '../../store/authStore.ts';
 import { usePlayerStore } from '../../store/playerStore.ts';
 import { recordHistory } from '../../api/history.ts';
+import { coverArtUrl } from '../Library/coverart.ts';
 import type { TrackResponse } from '../../types/index.ts';
 import { initAudioAnalyser, resumeAudioContext } from './audioAnalyser.ts';
 
@@ -169,6 +170,104 @@ export default function PlayerProvider() {
 
     window.addEventListener('sonus:play', onPlayRequest);
     return () => window.removeEventListener('sonus:play', onPlayRequest);
+  }, []);
+
+  // --- Media Session API: OS "Now Playing" integration ---
+  // Update metadata (title, artist, album, artwork) when track changes.
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !currentTrack) return;
+
+    const artSrc = coverArtUrl(currentTrack.albumId);
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentTrack.title,
+      artist: currentTrack.artistName,
+      album: currentTrack.albumName ?? '',
+      artwork: [
+        { src: artSrc, sizes: '256x256', type: 'image/jpeg' },
+        { src: artSrc, sizes: '512x512', type: 'image/jpeg' },
+      ],
+    });
+  }, [currentTrack]);
+
+  // Update playback state when play/pause changes.
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+  }, [isPlaying]);
+
+  // Update position state for OS seek bar.
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !currentTrack) return;
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: audio.duration,
+        playbackRate: audio.playbackRate,
+        position: Math.min(audio.currentTime, audio.duration),
+      });
+    } catch {
+      // setPositionState may throw if values are invalid
+    }
+  });
+
+  // Register action handlers (play, pause, next, previous, seek).
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    const store = usePlayerStore.getState;
+
+    const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
+      ['play', () => store().resume()],
+      ['pause', () => store().pause()],
+      ['nexttrack', () => store().next()],
+      ['previoustrack', () => store().previous()],
+      ['seekto', (details) => {
+        if (details.seekTime != null) {
+          store().seek(details.seekTime);
+          const audio = audioRef.current;
+          if (audio) audio.currentTime = details.seekTime;
+        }
+      }],
+      ['seekforward', (details) => {
+        const audio = audioRef.current;
+        if (audio) {
+          const offset = details.seekOffset ?? 10;
+          const t = Math.min(audio.duration, audio.currentTime + offset);
+          audio.currentTime = t;
+          store().seek(t);
+        }
+      }],
+      ['seekbackward', (details) => {
+        const audio = audioRef.current;
+        if (audio) {
+          const offset = details.seekOffset ?? 10;
+          const t = Math.max(0, audio.currentTime - offset);
+          audio.currentTime = t;
+          store().seek(t);
+        }
+      }],
+    ];
+
+    for (const [action, handler] of handlers) {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        // Some actions may not be supported in all browsers
+      }
+    }
+
+    return () => {
+      for (const [action] of handlers) {
+        try {
+          navigator.mediaSession.setActionHandler(action, null);
+        } catch {
+          // ignore
+        }
+      }
+    };
   }, []);
 
   return (

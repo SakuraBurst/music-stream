@@ -7,7 +7,45 @@ import type { RGBColor } from './useColorExtractor.ts';
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Number of visual bars to render. */
+/*
+ * ============================== TUNING GUIDE ==============================
+ *
+ * Signal flow (per frame, per bar):
+ *
+ *   FFT bin data (0-255)
+ *     → pick PEAK value in the bar's bin group
+ *     → normalize to 0..1           linear = peak / 255
+ *     → subtract NOISE_FLOOR        floored = (linear - floor) / (1 - floor), or 0
+ *     → apply EXPANSION_POWER       expanded = floored ^ power
+ *     → apply FREQ_TILT             final = expanded * (TILT_LOW + (TILT_HIGH-TILT_LOW) * barIndex/count)
+ *     → clamp to [0, 1]
+ *     → per-bar smoothing           if rising: lerp with RISE_SPEED
+ *                                   if falling: lerp with FALL_SPEED
+ *     → draw bar                    height = final * canvasHeight
+ *                                   alpha  = BAR_ALPHA_MIN + (1-BAR_ALPHA_MIN) * final
+ *
+ * How each knob affects the look:
+ *
+ *   NOISE_FLOOR      Higher → deeper valleys between peaks (quiet bins → 0).
+ *                     0 = no cutoff, 0.2 = aggressive. Start: 0.12
+ *
+ *   EXPANSION_POWER  >1 = contrast UP (loud louder, quiet quieter).
+ *                     <1 = compression (everything similar height).
+ *                     1.0 = linear (no change). Start: 1.4
+ *
+ *   TILT_LOW / HIGH  Multiplier for the leftmost / rightmost bar.
+ *                     Increase HIGH to boost treble, decrease LOW to cut bass.
+ *                     Both 1.0 = flat. Start: 0.8 / 1.2
+ *
+ *   RISE_SPEED       How fast bars jump UP to a new peak.
+ *                     0 = instant, 1 = frozen. Start: 0.5
+ *
+ *   FALL_SPEED       How slowly bars sink DOWN after a peak.
+ *                     0 = instant drop, 0.99 = very slow gravity. Start: 0.97
+ *
+ * ========================================================================== */
+
+/** Total number of visual bars. More = finer detail, fewer = chunkier. */
 const BAR_COUNT = 48;
 
 /** Canvas height in CSS pixels. */
@@ -16,16 +54,70 @@ const CANVAS_HEIGHT = 96;
 /** Gap between bars in CSS pixels. */
 const BAR_GAP = 2;
 
-/** Minimum bar height so bars are always slightly visible. */
+/** Minimum bar height so silent bars are still faintly visible. */
 const MIN_BAR_HEIGHT = 2;
 
 /**
- * Smoothing — bars rise/fall toward their target using exponential easing.
- * Higher = smoother & slower. Separate rise/fall speeds create a cava-like
- * feel where bars jump up quickly but sink down gently.
+ * Noise floor — values below this threshold are zeroed out.
+ * Creates visible "valleys" between active frequency peaks.
+ * Range: 0 (disabled) .. ~0.25 (aggressive).
  */
-const RISE_SPEED = 0.5; // fast attack (lower = faster)
-const FALL_SPEED = 0.97; // slow decay  (higher = slower, gravity-like)
+const NOISE_FLOOR = 0.12;
+
+/**
+ * Expansion power — controls contrast between loud and quiet.
+ *   < 1  → compression (flattens everything toward similar height)
+ *   = 1  → linear (raw values)
+ *   > 1  → expansion (peaks go higher, quiet sinks lower)
+ *
+ * Formula: output = input ^ EXPANSION_POWER
+ *   pow=0.5: input 0.3 → 0.55 (compressed)
+ *   pow=1.0: input 0.3 → 0.30 (linear)
+ *   pow=1.4: input 0.3 → 0.14 (expanded — valleys deepen)
+ *   pow=2.0: input 0.3 → 0.09 (very deep valleys)
+ */
+const EXPANSION_POWER = 1.4;
+
+/**
+ * Frequency tilt — multiplier applied per bar, linearly from
+ * TILT_LOW (bar 0, lowest bass) to TILT_HIGH (last bar, highest treble).
+ *
+ * Use this to rebalance if bass dominates or treble is invisible.
+ *   Both 1.0 = flat (no correction)
+ *   LOW=0.6, HIGH=1.4 = strong bass cut + treble boost
+ */
+const TILT_LOW = 0.8;
+const TILT_HIGH = 1.2;
+
+/**
+ * Automatic Gain Control (AGC) — normalizes bars to the recent peak level
+ * so the visualizer looks similar regardless of volume.
+ *
+ *   AGC_ATTACK:  How fast the gain adapts UP when signal gets louder.
+ *                0 = instant, 0.99 = very slow. Start: 0.3
+ *   AGC_RELEASE: How fast the gain adapts DOWN when signal gets quieter.
+ *                0 = instant, 0.99 = very slow (holds peaks longer). Start: 0.985
+ *   AGC_MIN:     Minimum reference level (prevents divide-by-near-zero
+ *                during silence). Start: 0.05
+ */
+const AGC_ATTACK = 0.3;
+const AGC_RELEASE = 0.985;
+const AGC_MIN = 0.05;
+
+/**
+ * Smoothing — how fast bars track changes (exponential easing).
+ *   RISE: 0 = instant jump up, 0.9 = very sluggish rise.
+ *   FALL: 0 = instant drop, 0.99 = very slow gravity decay.
+ *
+ * Formula (each frame):
+ *   rising:  smoothed = current + (target - current) * (1 - RISE_SPEED)
+ *   falling: smoothed = current * FALL_SPEED + target * (1 - FALL_SPEED)
+ */
+const RISE_SPEED = 0.5;
+const FALL_SPEED = 0.97;
+
+/** Minimum alpha for drawn bars. Higher = quiet bars more visible. */
+const BAR_ALPHA_MIN = 0.35;
 
 // ---------------------------------------------------------------------------
 // Bin-to-bar mapping (computed once)
@@ -107,6 +199,8 @@ export default function AudioVisualizer({
   const containerRef = useRef<HTMLDivElement>(null);
   // Per-bar smoothed heights (normalized 0-1), persist across frames
   const smoothedRef = useRef<Float32Array>(new Float32Array(BAR_COUNT));
+  // AGC: tracked peak level for normalization (persists across frames)
+  const agcPeakRef = useRef<number>(AGC_MIN);
   // Store colors in ref to avoid re-creating the draw closure
   const colorsRef = useRef<{ primary: RGBColor; secondary: RGBColor }>({
     primary: [255, 255, 255],
@@ -176,15 +270,43 @@ export default function AudioVisualizer({
             if (data[idx] > peak) peak = data[idx];
           }
 
-          // Power-curve compression: sqrt-ish to tame bass without killing it
           const linear = peak / 255;
-          const compressed = Math.pow(linear, 0.55);
 
-          // Frequency tilt: gentle bass cut + treble boost
+          // 1) Noise floor → valleys between peaks
+          const floored = linear > NOISE_FLOOR
+            ? (linear - NOISE_FLOOR) / (1 - NOISE_FLOOR)
+            : 0;
+
+          // 2) Expansion → contrast between loud and quiet
+          const expanded = Math.pow(floored, EXPANSION_POWER);
+
+          // 3) Frequency tilt → bass/treble balance
           const t = i / (BAR_COUNT - 1);
-          const freqTilt = 0.75 + 0.5 * t;
+          const tilt = TILT_LOW + (TILT_HIGH - TILT_LOW) * t;
 
-          rawValues[i] = Math.min(1, compressed * freqTilt);
+          rawValues[i] = expanded * tilt;
+        }
+
+        // AGC: find current frame peak, update tracked reference level
+        let framePeak = 0;
+        for (let i = 0; i < BAR_COUNT; i++) {
+          if (rawValues[i] > framePeak) framePeak = rawValues[i];
+        }
+
+        const prevPeak = agcPeakRef.current;
+        if (framePeak > prevPeak) {
+          // Signal got louder → adapt up quickly
+          agcPeakRef.current = prevPeak + (framePeak - prevPeak) * (1 - AGC_ATTACK);
+        } else {
+          // Signal got quieter → release slowly (hold the peak)
+          agcPeakRef.current = prevPeak * AGC_RELEASE + framePeak * (1 - AGC_RELEASE);
+        }
+        agcPeakRef.current = Math.max(agcPeakRef.current, AGC_MIN);
+
+        // Normalize all bars by the tracked peak
+        const ref = agcPeakRef.current;
+        for (let i = 0; i < BAR_COUNT; i++) {
+          rawValues[i] = Math.min(1, rawValues[i] / ref);
         }
       }
 
@@ -253,8 +375,7 @@ function drawBars(
     const t = i / (BAR_COUNT - 1);
     const color = lerpColor(colors.primary, colors.secondary, t);
 
-    // Alpha varies with amplitude — min 0.35 so bars are always softly visible
-    const alpha = 0.35 + 0.65 * norm;
+    const alpha = BAR_ALPHA_MIN + (1 - BAR_ALPHA_MIN) * norm;
     ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
 
     const radius = Math.min(barWidth / 2, 3 * dpr);
