@@ -12,6 +12,16 @@ function rgba(c: RGBColor, a: number): string {
   return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
 }
 
+/** Soften a color — slight desaturation for a gentler look. */
+function soften(c: RGBColor, amount: number = 0.2): RGBColor {
+  const gray = (c[0] + c[1] + c[2]) / 3;
+  return [
+    Math.round(c[0] * (1 - amount) + gray * amount),
+    Math.round(c[1] * (1 - amount) + gray * amount),
+    Math.round(c[2] * (1 - amount) + gray * amount),
+  ];
+}
+
 /**
  * Fullscreen ambient background for Zen mode.
  *
@@ -21,8 +31,8 @@ function rgba(c: RGBColor, a: number): string {
  */
 export default function AmbientGlow({ colors }: AmbientGlowProps) {
   const primary = colors[0] ?? [60, 60, 80];
-  const secondary1 = colors[1] ?? [40, 40, 60];
-  const secondary2 = colors[2] ?? [80, 60, 80];
+  const secondary1 = soften(colors[1] ?? [40, 40, 60]);
+  const secondary2 = soften(colors[2] ?? [80, 60, 80]);
 
   const bg = darkenColor(primary, 0.45);
 

@@ -4,6 +4,7 @@ import { usePlayerStore } from '../../store/playerStore.ts';
 import type { RepeatMode } from '../../store/playerStore.ts';
 import { coverArtUrl } from '../Library/coverart.ts';
 import AudioVisualizer from './AudioVisualizer.tsx';
+import { useColorExtractor } from './useColorExtractor.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -52,6 +53,9 @@ export default function ExpandedPlayer() {
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const toggleRepeat = usePlayerStore((s) => s.toggleRepeat);
   const closeExpanded = usePlayerStore((s) => s.closeExpanded);
+
+  const artUrl = currentTrack ? coverArtUrl(currentTrack.albumId) : null;
+  const colors = useColorExtractor(artUrl);
   const play = usePlayerStore((s) => s.play);
 
   // Animation states (same pattern as ZenPlayer)
@@ -359,7 +363,7 @@ export default function ExpandedPlayer() {
 
         {/* Audio spectrum visualizer */}
         <div className="shrink-0 px-5 pb-2">
-          <AudioVisualizer />
+          <AudioVisualizer primaryColor={colors[0]} secondaryColor={colors[1]} />
         </div>
 
         {/* Queue header */}

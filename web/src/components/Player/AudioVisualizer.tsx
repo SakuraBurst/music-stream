@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { getAnalyserNode } from './audioAnalyser.ts';
+import type { RGBColor } from './useColorExtractor.ts';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -18,21 +19,20 @@ const BAR_GAP = 2;
 /** Minimum bar height so bars are always slightly visible. */
 const MIN_BAR_HEIGHT = 2;
 
+/**
+ * Smoothing — bars rise/fall toward their target using exponential easing.
+ * Higher = smoother & slower. Separate rise/fall speeds create a cava-like
+ * feel where bars jump up quickly but sink down gently.
+ */
+const RISE_SPEED = 0.5; // fast attack (lower = faster)
+const FALL_SPEED = 0.97; // slow decay  (higher = slower, gravity-like)
+
 // ---------------------------------------------------------------------------
-// Module-level cache for the bin-to-bar mapping (computed once).
+// Bin-to-bar mapping (computed once)
 // ---------------------------------------------------------------------------
 
 let cachedMapping: number[][] | null = null;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Map FFT frequency bins into `BAR_COUNT` visual bars using a logarithmic
- * scale.  Low frequencies get fewer bins (they're musically wider) and high
- * frequencies get more, matching human perception.
- */
 function binToBarMapping(binCount: number, barCount: number): number[][] {
   const mapping: number[][] = [];
   for (let i = 0; i < barCount; i++) {
@@ -52,9 +52,6 @@ function binToBarMapping(binCount: number, barCount: number): number[][] {
   return mapping;
 }
 
-/**
- * Return the cached mapping, building it on first call.
- */
 function getMapping(binCount: number): number[][] {
   if (!cachedMapping) {
     cachedMapping = binToBarMapping(binCount, BAR_COUNT);
@@ -63,25 +60,84 @@ function getMapping(binCount: number): number[][] {
 }
 
 // ---------------------------------------------------------------------------
+// Color helpers
+// ---------------------------------------------------------------------------
+
+/** Soften a color — desaturate slightly and adjust lightness for comfort. */
+function softenColor(c: RGBColor, lightness: number = 0.15): RGBColor {
+  // Mix toward a gray midpoint to desaturate, then nudge lighter
+  const gray = (c[0] + c[1] + c[2]) / 3;
+  const desat = 0.2; // 20% desaturation
+  return [
+    Math.min(255, Math.round(c[0] * (1 - desat) + gray * desat + lightness * 255)),
+    Math.min(255, Math.round(c[1] * (1 - desat) + gray * desat + lightness * 255)),
+    Math.min(255, Math.round(c[2] * (1 - desat) + gray * desat + lightness * 255)),
+  ];
+}
+
+function lerpColor(a: RGBColor, b: RGBColor, t: number): RGBColor {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * t),
+    Math.round(a[1] + (b[1] - a[1]) * t),
+    Math.round(a[2] + (b[2] - a[2]) * t),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
+
+interface AudioVisualizerProps {
+  primaryColor?: RGBColor;
+  secondaryColor?: RGBColor;
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export default function AudioVisualizer() {
+export default function AudioVisualizer({
+  primaryColor,
+  secondaryColor,
+}: AudioVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Per-bar smoothed heights (normalized 0-1), persist across frames
+  const smoothedRef = useRef<Float32Array>(new Float32Array(BAR_COUNT));
+  // Store colors in ref to avoid re-creating the draw closure
+  const colorsRef = useRef<{ primary: RGBColor; secondary: RGBColor }>({
+    primary: [255, 255, 255],
+    secondary: [255, 255, 255],
+  });
+
+  // Update colors ref when props change
+  useEffect(() => {
+    colorsRef.current = {
+      primary: primaryColor ? softenColor(primaryColor) : [255, 255, 255],
+      secondary: secondaryColor ? softenColor(secondaryColor) : [255, 255, 255],
+    };
+  }, [primaryColor, secondaryColor]);
 
   useEffect(() => {
+    const smoothed = smoothedRef.current;
+
     function draw() {
       const canvas = canvasRef.current;
       const analyser = getAnalyserNode();
 
-      if (!canvas) return;
+      if (!canvas) {
+        rafRef.current = requestAnimationFrame(draw);
+        return;
+      }
 
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!ctx) {
+        rafRef.current = requestAnimationFrame(draw);
+        return;
+      }
 
-      // Resize canvas to match container (accounts for device pixel ratio).
+      // Resize canvas to match container (DPR-aware)
       const container = containerRef.current;
       if (container) {
         const rect = container.getBoundingClientRect();
@@ -97,17 +153,39 @@ export default function AudioVisualizer() {
 
       const w = canvas.width;
       const h = canvas.height;
-
       ctx.clearRect(0, 0, w, h);
 
-      if (!analyser) {
-        drawBars(ctx, w, h, null, null);
-      } else {
+      // Get raw FFT values (0 if no analyser or paused → bars will decay)
+      let rawValues: Float32Array | null = null;
+      if (analyser) {
         const data = new Uint8Array(analyser.frequencyBinCount);
         analyser.getByteFrequencyData(data);
         const mapping = getMapping(analyser.frequencyBinCount);
-        drawBars(ctx, w, h, data, mapping);
+        rawValues = new Float32Array(BAR_COUNT);
+        for (let i = 0; i < BAR_COUNT; i++) {
+          const bins = mapping[i];
+          let sum = 0;
+          for (const idx of bins) sum += data[idx];
+          rawValues[i] = sum / bins.length / 255;
+        }
       }
+
+      // Apply smoothing — fast rise, slow fall (cava-like)
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const target = rawValues ? rawValues[i] : 0;
+        const current = smoothed[i];
+        if (target > current) {
+          // Rising — faster interpolation
+          smoothed[i] = current + (target - current) * (1 - RISE_SPEED);
+        } else {
+          // Falling — slow gravity-like decay
+          smoothed[i] = current * FALL_SPEED + target * (1 - FALL_SPEED);
+        }
+        // Clamp tiny values to zero to avoid endless micro-animation
+        if (smoothed[i] < 0.005) smoothed[i] = 0;
+      }
+
+      drawBars(ctx, w, h, smoothed, colorsRef.current);
 
       rafRef.current = requestAnimationFrame(draw);
     }
@@ -137,8 +215,8 @@ function drawBars(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  data: Uint8Array | null,
-  mapping: number[][] | null,
+  smoothed: Float32Array,
+  colors: { primary: RGBColor; secondary: RGBColor },
 ): void {
   const dpr = window.devicePixelRatio || 1;
   const gap = BAR_GAP * dpr;
@@ -147,26 +225,19 @@ function drawBars(
   const barWidth = Math.max(1, (width - totalGap) / BAR_COUNT);
 
   for (let i = 0; i < BAR_COUNT; i++) {
-    let value = 0;
-
-    if (data && mapping) {
-      const bins = mapping[i];
-      let sum = 0;
-      for (const idx of bins) {
-        sum += data[idx];
-      }
-      value = sum / bins.length;
-    }
-
-    const norm = value / 255;
+    const norm = smoothed[i];
     const barH = Math.max(minH, norm * height);
 
     const x = i * (barWidth + gap);
     const y = height - barH;
 
-    // White bars, alpha varies with amplitude.
-    const alpha = 0.3 + 0.7 * norm;
-    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+    // Gradient: primary color on left bars → secondary on right bars
+    const t = i / (BAR_COUNT - 1);
+    const color = lerpColor(colors.primary, colors.secondary, t);
+
+    // Alpha varies with amplitude — min 0.35 so bars are always softly visible
+    const alpha = 0.35 + 0.65 * norm;
+    ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
 
     const radius = Math.min(barWidth / 2, 3 * dpr);
     roundedRect(ctx, x, y, barWidth, barH, radius);
