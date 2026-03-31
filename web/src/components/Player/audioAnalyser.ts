@@ -17,14 +17,29 @@ let sourceNode: MediaElementAudioSourceNode | null = null;
 let connectedElement: HTMLAudioElement | null = null;
 
 /**
+ * Detect mobile/tablet devices where routing audio through
+ * createMediaElementSource would cause background playback to stop
+ * (the browser suspends AudioContext when the page is backgrounded).
+ */
+const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+/**
  * Lazily create the AudioContext + AnalyserNode and wire them to the
  * given <audio> element.  Safe to call multiple times — subsequent calls
  * with the same element are no-ops; calls with a *different* element are
  * ignored (createMediaElementSource can only be called once).
  *
+ * On mobile devices this is a no-op: routing audio through the Web Audio
+ * graph causes playback to stop when the screen locks because mobile
+ * browsers suspend the AudioContext.  The visualizer simply won't
+ * animate on mobile — an acceptable trade-off for uninterrupted playback.
+ *
  * Returns `true` if the analyser is ready, `false` on failure.
  */
 export function initAudioAnalyser(audio: HTMLAudioElement): boolean {
+  // Skip on mobile — background playback is more important than the visualizer.
+  if (isMobileDevice) return false;
+
   // Already wired to this element — nothing to do.
   if (connectedElement === audio && analyser) return true;
 

@@ -81,6 +81,7 @@ type ScannerService struct {
 	trackStore      *sqlite.TrackStore
 	coverArtService *CoverArtService
 	musicDirs       []string
+	uploadsDir      string
 	workers         int
 	logger          *slog.Logger
 
@@ -98,6 +99,7 @@ func NewScannerService(
 	trackStore *sqlite.TrackStore,
 	coverArtService *CoverArtService,
 	musicDirs []string,
+	uploadsDir string,
 	workers int,
 	logger *slog.Logger,
 ) *ScannerService {
@@ -105,13 +107,14 @@ func NewScannerService(
 		workers = 4
 	}
 	return &ScannerService{
-		artistStore:    artistStore,
-		albumStore:     albumStore,
-		trackStore:     trackStore,
+		artistStore:     artistStore,
+		albumStore:      albumStore,
+		trackStore:      trackStore,
 		coverArtService: coverArtService,
-		musicDirs:      musicDirs,
-		workers:        workers,
-		logger:         logger,
+		musicDirs:       musicDirs,
+		uploadsDir:      uploadsDir,
+		workers:         workers,
+		logger:          logger,
 	}
 }
 
@@ -190,10 +193,14 @@ func (s *ScannerService) Scan(ctx context.Context) (*ScanResult, error) {
 		}
 	}
 
-	// Step 5: Cleanup deleted files.
+	// Step 5: Cleanup deleted files (skip uploaded tracks — they are managed by UploadService).
 	var deletedTracks int
 	for path, id := range existingPaths {
 		if !currentPaths[path] {
+			// Never delete tracks that live in the uploads directory.
+			if s.uploadsDir != "" && strings.HasPrefix(path, s.uploadsDir) {
+				continue
+			}
 			if err := s.trackStore.Delete(ctx, id); err != nil {
 				s.logger.Error("failed to delete removed track", "path", path, "error", err)
 			} else {
@@ -273,11 +280,18 @@ func (s *ScannerService) Scan(ctx context.Context) (*ScanResult, error) {
 	}, nil
 }
 
-// walkDirs walks all configured music directories and collects audio file paths.
+// walkDirs walks all configured music directories (and the uploads directory) and collects audio file paths.
 func (s *ScannerService) walkDirs(ctx context.Context) ([]fileInfo, error) {
 	var files []fileInfo
 
-	for _, dir := range s.musicDirs {
+	// Combine music dirs with uploads dir so uploaded tracks are always included.
+	dirs := make([]string, 0, len(s.musicDirs)+1)
+	dirs = append(dirs, s.musicDirs...)
+	if s.uploadsDir != "" {
+		dirs = append(dirs, s.uploadsDir)
+	}
+
+	for _, dir := range dirs {
 		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				s.logger.Warn("walk error", "path", path, "error", err)

@@ -152,9 +152,10 @@ func (m searchModel) update(msg tea.Msg) (searchModel, tea.Cmd) {
 				}
 
 			case key.Matches(msg, key.NewBinding(key.WithKeys("esc"))):
-				// Clear input.
-				m.input.SetValue("")
-				m.lastQuery = ""
+				// Blur input so app-level keys (tab switching, quit) work again.
+				// Press "/" to re-focus the input.
+				m.focus = focusResults
+				m.input.Blur()
 				return m, nil
 			}
 
@@ -295,7 +296,7 @@ func (m searchModel) view() string {
 
 func (m searchModel) statusHints() string {
 	if m.focus == focusInput {
-		return "[enter] search  [down] results  [esc] clear  [1-4] tabs  [q] quit"
+		return "[enter] search  [down] results  [esc] unfocus  [1-4] tabs  [q] quit"
 	}
 	return "[esc] back to input  [/] search  [j/k] navigate  [1-4] tabs  [q] quit"
 }

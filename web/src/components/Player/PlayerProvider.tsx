@@ -64,6 +64,11 @@ export default function PlayerProvider() {
     audio.play().catch(() => {
       usePlayerStore.getState()._setIsPlaying(false);
     });
+
+    // On mobile, auto-open the full-screen player when a new track starts.
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      usePlayerStore.getState().openExpanded();
+    }
   }, [currentTrack, streamUrl]);
 
   // --- Sync play/pause state ---
@@ -196,9 +201,12 @@ export default function PlayerProvider() {
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
   }, [isPlaying]);
 
-  // Update position state for OS seek bar.
+  // Update position state for OS seek bar (desktop only).
+  // On mobile iOS, calling setPositionState can cause the lock screen to
+  // show seek controls (±15s) instead of prev/next track buttons.
   useEffect(() => {
     if (!('mediaSession' in navigator) || !currentTrack) return;
+    if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return;
     const audio = audioRef.current;
     if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
 
@@ -213,49 +221,50 @@ export default function PlayerProvider() {
     }
   });
 
-  // Register action handlers (play, pause, next, previous, seek).
+  // Register action handlers when track changes (not just on mount).
+  // On iOS Safari, handlers registered before audio.play() may be ignored.
+  // Re-registering on each track change ensures they're set after playback starts.
+  // Important: do NOT register seekforward/seekbackward — on iOS Safari,
+  // having those handlers causes the lock screen to show ±15s skip buttons
+  // instead of previous/next track. We explicitly null them out.
   useEffect(() => {
-    if (!('mediaSession' in navigator)) return;
+    if (!('mediaSession' in navigator) || !currentTrack) return;
 
     const store = usePlayerStore.getState;
 
     const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
-      ['play', () => store().resume()],
-      ['pause', () => store().pause()],
+      ['play', async () => {
+        store().resume();
+        const audio = audioRef.current;
+        if (audio) {
+          await audio.play().catch(() => {});
+          navigator.mediaSession.playbackState = 'playing';
+        }
+      }],
+      ['pause', () => {
+        store().pause();
+        const audio = audioRef.current;
+        if (audio) audio.pause();
+        navigator.mediaSession.playbackState = 'paused';
+      }],
       ['nexttrack', () => store().next()],
       ['previoustrack', () => store().previous()],
-      ['seekto', (details) => {
-        if (details.seekTime != null) {
-          store().seek(details.seekTime);
-          const audio = audioRef.current;
-          if (audio) audio.currentTime = details.seekTime;
-        }
-      }],
-      ['seekforward', (details) => {
-        const audio = audioRef.current;
-        if (audio) {
-          const offset = details.seekOffset ?? 10;
-          const t = Math.min(audio.duration, audio.currentTime + offset);
-          audio.currentTime = t;
-          store().seek(t);
-        }
-      }],
-      ['seekbackward', (details) => {
-        const audio = audioRef.current;
-        if (audio) {
-          const offset = details.seekOffset ?? 10;
-          const t = Math.max(0, audio.currentTime - offset);
-          audio.currentTime = t;
-          store().seek(t);
-        }
-      }],
     ];
 
     for (const [action, handler] of handlers) {
       try {
         navigator.mediaSession.setActionHandler(action, handler);
       } catch {
-        // Some actions may not be supported in all browsers
+        // Some browsers may not support all actions
+      }
+    }
+
+    // Explicitly remove seek handlers so iOS doesn't show ±15s buttons
+    for (const action of ['seekbackward', 'seekforward', 'seekto'] as MediaSessionAction[]) {
+      try {
+        navigator.mediaSession.setActionHandler(action, null);
+      } catch {
+        // ignore
       }
     }
 
@@ -268,7 +277,7 @@ export default function PlayerProvider() {
         }
       }
     };
-  }, []);
+  }, [currentTrack]);
 
   return (
     <audio

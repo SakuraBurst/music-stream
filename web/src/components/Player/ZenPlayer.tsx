@@ -212,9 +212,9 @@ export default function ZenPlayer() {
       {/* Ambient background — solid primary fill + lava lamp blobs (fully opaque) */}
       <AmbientGlow colors={colors} />
 
-      {/* Content */}
+      {/* Content — responsive padding and sizing */}
       <div
-        className="relative z-10 flex flex-col items-center w-full max-w-xl px-6 transition-transform duration-200 ease-out"
+        className="relative z-10 flex flex-col items-center w-full max-w-xl px-6 max-md:px-5 max-md:py-safe transition-transform duration-200 ease-out"
         style={{
           transform: visible ? 'scale(1)' : 'scale(0.95)',
         }}
@@ -222,7 +222,7 @@ export default function ZenPlayer() {
         {/* Close button — chevron down at top center */}
         <button
           onClick={closeZen}
-          className="mb-6 self-center p-2 rounded-full cursor-pointer"
+          className="mb-4 max-md:mb-3 self-center p-3 rounded-full cursor-pointer"
           style={{ color: zen.closeBtn, transition: colorTransition }}
           aria-label="Close Zen player"
         >
@@ -231,42 +231,41 @@ export default function ZenPlayer() {
           </svg>
         </button>
 
-        {/* Album art */}
-        <div className="relative w-full aspect-square max-h-[70vh] rounded-lg overflow-hidden shadow-2xl">
+        {/* Album art — slightly smaller max on mobile to leave room for controls */}
+        <div className="relative w-full aspect-square max-h-[70vh] max-md:max-h-[50vh] rounded-lg overflow-hidden shadow-2xl">
           <img
             src={coverArtUrl(currentTrack.albumId)}
             alt={currentTrack.title}
             className="w-full h-full object-cover"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
+            onLoad={(e) => { e.currentTarget.style.display = ''; }}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
         </div>
 
         {/* Track info */}
-        <div className="mt-2 text-center w-full min-w-0">
+        <div className="mt-3 max-md:mt-4 text-center w-full min-w-0">
           <h2
-            className="text-2xl font-semibold truncate"
+            className="text-2xl max-md:text-xl font-semibold truncate"
             style={{ color: zen.textPrimary, textShadow: zen.textShadow, transition: colorTransition }}
           >
             {currentTrack.title}
           </h2>
           <p
-            className="text-base mt-1 truncate"
+            className="text-base max-md:text-sm mt-1 truncate"
             style={{ color: zen.textSecondary, textShadow: zen.textShadow, transition: colorTransition }}
           >
             {currentTrack.artistName}
           </p>
           <p
-            className="text-sm mt-0.5 truncate"
+            className="text-sm max-md:text-xs mt-0.5 truncate"
             style={{ color: zen.textTertiary, textShadow: zen.textShadow, transition: colorTransition }}
           >
             {currentTrack.albumName}
           </p>
         </div>
 
-        {/* Seekable progress bar */}
-        <div className="w-full mt-2">
+        {/* Seekable progress bar — taller touch target on mobile */}
+        <div className="w-full mt-3 max-md:mt-4">
           <div className="relative group">
             <input
               type="range"
@@ -275,11 +274,11 @@ export default function ZenPlayer() {
               step={0.1}
               value={progress}
               onChange={handleSeek}
-              className="absolute inset-0 w-full h-1.5 opacity-0 cursor-pointer z-10"
+              className="absolute inset-0 w-full h-2 max-md:h-4 opacity-0 cursor-pointer z-10"
               aria-label="Seek"
             />
             <div
-              className="w-full h-1.5 rounded-full overflow-hidden"
+              className="w-full h-1.5 max-md:h-2 rounded-full overflow-hidden"
               style={{ backgroundColor: zen.progressTrack, transition: colorTransition }}
             >
               <div
@@ -304,10 +303,11 @@ export default function ZenPlayer() {
           </div>
         </div>
 
-        {/* Transport controls */}
-        <div className="flex items-center justify-center gap-5 mt-2">
+        {/* Transport controls — larger touch targets on mobile */}
+        <div className="flex items-center justify-center gap-5 max-md:gap-4 mt-2 max-md:mt-3">
           <button
             onClick={toggleShuffle}
+            className="p-2"
             style={{
               color: shuffle ? zen.controlActive : zen.controlInactive,
               transition: colorTransition,
@@ -315,25 +315,26 @@ export default function ZenPlayer() {
             aria-label="Shuffle"
             title="Shuffle"
           >
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 max-md:w-6 max-md:h-6">
               <path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
             </svg>
           </button>
 
           <button
             onClick={previous}
+            className="p-2"
             style={{ color: zen.controlHover, transition: colorTransition }}
             aria-label="Previous"
             title="Previous"
           >
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 max-md:w-9 max-md:h-9">
               <path d="M6 6h2v12H6V6zm3.5 6 8.5 6V6l-8.5 6z" />
             </svg>
           </button>
 
           <button
             onClick={isPlaying ? pause : resume}
-            className="w-14 h-14 flex items-center justify-center rounded-full hover:scale-105 transition-transform"
+            className="w-16 h-16 max-md:w-16 max-md:h-16 flex items-center justify-center rounded-full hover:scale-105 active:scale-95 transition-transform"
             style={{
               backgroundColor: zen.playBg,
               color: zen.playFg,
@@ -343,11 +344,11 @@ export default function ZenPlayer() {
             title={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? (
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7">
                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
               </svg>
             ) : (
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7">
                 <path d="M8 5v14l11-7z" />
               </svg>
             )}
@@ -355,17 +356,19 @@ export default function ZenPlayer() {
 
           <button
             onClick={next}
+            className="p-2"
             style={{ color: zen.controlHover, transition: colorTransition }}
             aria-label="Next"
             title="Next"
           >
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 max-md:w-9 max-md:h-9">
               <path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z" />
             </svg>
           </button>
 
           <button
             onClick={toggleRepeat}
+            className="p-2"
             style={{
               color: repeat !== 'none' ? zen.controlActive : zen.controlInactive,
               transition: colorTransition,
@@ -374,19 +377,19 @@ export default function ZenPlayer() {
             title={repeatLabel(repeat)}
           >
             {repeat === 'one' ? (
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 max-md:w-6 max-md:h-6">
                 <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z" />
               </svg>
             ) : (
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 max-md:w-6 max-md:h-6">
                 <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
               </svg>
             )}
           </button>
         </div>
 
-        {/* Volume control */}
-        <div className="flex items-center gap-2 mt-2">
+        {/* Volume control — hidden on mobile (system volume controls are used) */}
+        <div className="hidden md:flex items-center gap-2 mt-2">
           <svg
             viewBox="0 0 24 24"
             fill="currentColor"

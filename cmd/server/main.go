@@ -76,17 +76,18 @@ func main() {
 	coverArtDir := filepath.Join(cfg.Server.DataDir, "coverart")
 	coverArtService := service.NewCoverArtService(albumStore, trackStore, coverArtDir, logger)
 
+	uploadsDir := filepath.Join(cfg.Server.DataDir, "uploads")
+
 	scannerService := service.NewScannerService(
 		artistStore,
 		albumStore,
 		trackStore,
 		coverArtService,
 		cfg.Library.MusicDirs,
+		uploadsDir,
 		4, // default worker count
 		logger,
 	)
-
-	uploadsDir := filepath.Join(cfg.Server.DataDir, "uploads")
 	uploadService := service.NewUploadService(artistStore, albumStore, trackStore, coverArtService, uploadsDir, logger)
 
 	libraryService := service.NewLibraryService(artistStore, albumStore, trackStore)
@@ -119,7 +120,7 @@ func main() {
 	transcoderService.StartCacheEvictor(context.Background())
 
 	// Start scan on startup if configured.
-	if cfg.Library.ScanOnStartup && len(cfg.Library.MusicDirs) > 0 {
+	if cfg.Library.ScanOnStartup {
 		go func() {
 			logger.Info("starting library scan on startup")
 			if _, err := scannerService.Scan(context.Background()); err != nil {

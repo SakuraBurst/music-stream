@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -53,6 +55,19 @@ type loginDoneMsg struct {
 	client *client.Client
 }
 
+// authExpiredMsg signals that the session is no longer valid and the user
+// must re-authenticate.
+type authExpiredMsg struct{}
+
+// isAuthError returns true if the error is a 401 Unauthorized API error.
+func isAuthError(err error) bool {
+	var apiErr *client.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == 401 {
+		return true
+	}
+	return false
+}
+
 func newAppModel(apiClient *client.Client, tokenPath string, needLogin bool) appModel {
 	mpvOK := checkMpvAvailable()
 	var mpvWarn string
@@ -101,10 +116,13 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			adjustedMsg.Height = msg.Height - playerH
 		}
 		// Forward to sub-models so they can resize their lists.
-		var libCmd, searchCmd tea.Cmd
-		m.library, libCmd = m.library.update(adjustedMsg)
-		m.search, searchCmd = m.search.update(adjustedMsg)
-		return m, tea.Batch(libCmd, searchCmd)
+		if !m.showLogin {
+			var libCmd, searchCmd tea.Cmd
+			m.library, libCmd = m.library.update(adjustedMsg)
+			m.search, searchCmd = m.search.update(adjustedMsg)
+			return m, tea.Batch(libCmd, searchCmd)
+		}
+		return m, nil
 
 	case tea.KeyMsg:
 		// Global quit: Ctrl+C always quits.
@@ -174,12 +192,48 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.delegateToActiveTab(msg)
 		}
 
+	case authExpiredMsg:
+		// Session expired — clear saved tokens and show login screen.
+		if m.tokenPath != "" {
+			_ = os.Remove(m.tokenPath)
+		}
+		m.showLogin = true
+		m.client = nil
+		m.login = newLoginModel()
+		m.login.width = m.width
+		m.login.height = m.height
+		m.login.err = "Session expired. Please log in again."
+		m.player.stop()
+		return m, m.login.Init()
+
+	case libraryErrMsg:
+		if isAuthError(msg.err) {
+			return m, func() tea.Msg { return authExpiredMsg{} }
+		}
+
+	case searchErrMsg:
+		if isAuthError(msg.err) {
+			return m, func() tea.Msg { return authExpiredMsg{} }
+		}
+
 	case loginDoneMsg:
 		m.showLogin = false
 		m.client = msg.client
 		m.library = newLibraryModel(msg.client)
 		m.search = newSearchModel(msg.client)
 		m.player = newPlayerModel(msg.client)
+		m.player.width = m.width
+		// Apply current window size to the new sub-models.
+		if m.width > 0 && m.height > 0 {
+			sizeMsg := tea.WindowSizeMsg{Width: m.width, Height: m.height}
+			adjustedMsg := sizeMsg
+			playerH := m.player.playerBarHeight()
+			if playerH > 0 {
+				adjustedMsg.Height = sizeMsg.Height - playerH
+			}
+			m.library, _ = m.library.update(adjustedMsg)
+			m.search, _ = m.search.update(adjustedMsg)
+		}
 		// Load the library on login completion.
 		return m, m.library.Init()
 	}

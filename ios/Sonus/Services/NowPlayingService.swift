@@ -19,6 +19,11 @@ final class NowPlayingService {
         guard !isConfigured else { return }
         isConfigured = true
 
+        // Explicitly disable skip forward/backward so lock screen shows
+        // next/previous track buttons instead of ±15 second skip controls.
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+
         // Play
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in

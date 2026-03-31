@@ -57,9 +57,11 @@ export default function TrackRow({
       </td>
       {showArtist && (
         <td className="px-3 py-2 text-sm text-zinc-400 truncate max-w-0">
+          {/* Plain text on mobile (prevent false taps), link on desktop */}
+          <span className="md:hidden">{track.artistName}</span>
           <Link
             to={`/artists/${track.artistId}`}
-            className="hover:text-white hover:underline"
+            className="hidden md:inline hover:text-white hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
             {track.artistName}
@@ -68,9 +70,10 @@ export default function TrackRow({
       )}
       {showAlbum && (
         <td className="px-3 py-2 text-sm text-zinc-400 truncate max-w-0">
+          <span className="md:hidden">{track.albumName}</span>
           <Link
             to={`/albums/${track.albumId}`}
-            className="hover:text-white hover:underline"
+            className="hidden md:inline hover:text-white hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
             {track.albumName}

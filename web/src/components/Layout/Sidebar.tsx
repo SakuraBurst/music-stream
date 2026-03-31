@@ -39,7 +39,7 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="flex flex-col w-60 shrink-0 bg-zinc-900 border-r border-zinc-800 h-full overflow-y-auto">
+    <aside className="hidden md:flex flex-col w-60 shrink-0 bg-zinc-900 border-r border-zinc-800 h-full overflow-y-auto">
       <div className="px-4 py-5">
         <NavLink to="/" className="text-xl font-bold text-white tracking-tight">
           Sonus

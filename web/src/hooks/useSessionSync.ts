@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 
 import { useAuthStore } from '../store/authStore.ts';
 import { usePlayerStore } from '../store/playerStore.ts';
@@ -6,7 +6,6 @@ import { saveSession, getSession } from '../api/session.ts';
 import { apiGet } from '../api/client.ts';
 import type { TrackResponse } from '../types/index.ts';
 import type { RepeatMode } from '../store/playerStore.ts';
-import type { PlaybackSessionResponse } from '../api/session.ts';
 
 /** Interval in ms between auto-saves while playing. */
 const SAVE_INTERVAL_MS = 10_000;
@@ -15,26 +14,16 @@ const SAVE_INTERVAL_MS = 10_000;
 const DEBOUNCE_MS = 2_000;
 
 /**
- * Pending session to offer the user on restore.
- * Exported so components can react to it.
- */
-export interface PendingRestore {
-  session: PlaybackSessionResponse;
-  track: TrackResponse;
-}
-
-/**
- * useSessionSync auto-saves playback state to the server and attempts
- * to restore it when the app first loads after authentication.
+ * useSessionSync auto-saves playback state to the server and silently
+ * restores it when the app first loads after authentication.
+ *
+ * Restored sessions are loaded in a paused state so the player is ready
+ * but playback doesn't start until the user presses play.
  *
  * Mount this once, inside a component that is only rendered when
  * the user is authenticated.
  */
 export function useSessionSync() {
-  const [pendingRestore, setPendingRestore] = useState<PendingRestore | null>(
-    null,
-  );
-
   // --- Refs for debounce / interval tracking ---
   const lastSaveTime = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -153,7 +142,7 @@ export function useSessionSync() {
     };
   }, [doSave]);
 
-  // --- Restore session on mount (after auth) ---
+  // --- Silently restore session on mount (after auth) ---
   useEffect(() => {
     let cancelled = false;
 
@@ -172,7 +161,43 @@ export function useSessionSync() {
         ).catch(() => null);
         if (cancelled || !track) return;
 
-        setPendingRestore({ session, track });
+        // Fetch full TrackResponse objects for the queue
+        const queueTracks: TrackResponse[] = [];
+        let currentIndex = 0;
+
+        if (session.queueTrackIds.length > 0) {
+          const fetched = await Promise.all(
+            session.queueTrackIds.map((id) =>
+              apiGet<TrackResponse>(`/tracks/${id}`).catch(() => null),
+            ),
+          );
+
+          for (const t of fetched) {
+            if (t) queueTracks.push(t);
+          }
+
+          currentIndex = queueTracks.findIndex((t) => t.id === track.id);
+          if (currentIndex === -1) {
+            queueTracks.unshift(track);
+            currentIndex = 0;
+          }
+        } else {
+          queueTracks.push(track);
+          currentIndex = 0;
+        }
+
+        if (cancelled) return;
+
+        // Restore paused — the user can press play when ready.
+        usePlayerStore.getState().restoreSession({
+          track,
+          queue: queueTracks,
+          queueIndex: currentIndex,
+          position: session.positionSeconds,
+          volume: session.volume,
+          shuffle: session.shuffle,
+          repeat: session.repeatMode as RepeatMode,
+        });
       } catch {
         // Best-effort — silently ignore
       }
@@ -183,54 +208,4 @@ export function useSessionSync() {
       cancelled = true;
     };
   }, []);
-
-  // --- Confirm / dismiss restore ---
-  const confirmRestore = useCallback(async () => {
-    if (!pendingRestore) return;
-    const { session, track } = pendingRestore;
-
-    // Fetch full TrackResponse objects for the queue
-    const queueTracks: TrackResponse[] = [];
-    let currentIndex = 0;
-
-    if (session.queueTrackIds.length > 0) {
-      const fetched = await Promise.all(
-        session.queueTrackIds.map((id) =>
-          apiGet<TrackResponse>(`/tracks/${id}`).catch(() => null),
-        ),
-      );
-
-      for (const t of fetched) {
-        if (t) queueTracks.push(t);
-      }
-
-      currentIndex = queueTracks.findIndex((t) => t.id === track.id);
-      if (currentIndex === -1) {
-        // Track not in the resolved queue — put it first
-        queueTracks.unshift(track);
-        currentIndex = 0;
-      }
-    } else {
-      queueTracks.push(track);
-      currentIndex = 0;
-    }
-
-    usePlayerStore.getState().restoreSession({
-      track,
-      queue: queueTracks,
-      queueIndex: currentIndex,
-      position: session.positionSeconds,
-      volume: session.volume,
-      shuffle: session.shuffle,
-      repeat: session.repeatMode as RepeatMode,
-    });
-
-    setPendingRestore(null);
-  }, [pendingRestore]);
-
-  const dismissRestore = useCallback(() => {
-    setPendingRestore(null);
-  }, []);
-
-  return { pendingRestore, confirmRestore, dismissRestore };
 }

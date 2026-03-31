@@ -1,5 +1,38 @@
 @import "tailwindcss";
 
+/* Safe area padding for notched/Dynamic Island devices (iPhone X+) */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+/* Prevent text size adjustment on orientation change (mobile Safari) */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Hide range input default styling for consistent mobile appearance */
+@media (max-width: 767px) {
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: white;
+  }
+}
+
 /* Zen player — lava lamp blob animations.
    Each blob drifts on its own independent multi-point path
    with different durations so they never synchronise. */
