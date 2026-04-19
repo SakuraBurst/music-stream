@@ -8,23 +8,17 @@ interface AddToPlaylistButtonProps {
   className?: string;
 }
 
-export default function AddToPlaylistButton({
-  trackId,
-  className = '',
-}: AddToPlaylistButtonProps) {
+export default function AddToPlaylistButton({ trackId, className = '' }: AddToPlaylistButtonProps) {
   const [open, setOpen] = useState(false);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(false);
   const [addedTo, setAddedTo] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -59,42 +53,34 @@ export default function AddToPlaylistButton({
     <div className={`relative ${className}`} ref={menuRef}>
       <button
         onClick={handleToggle}
-        className="text-zinc-600 hover:text-zinc-400 transition-colors"
+        className="text-[var(--mute)] hover:text-[var(--ink2)] transition-colors text-[14px] leading-none cursor-pointer"
         title="Add to playlist"
         aria-label="Add to playlist"
-      >
-        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-          <path d="M14 10H3v2h11v-2zm0-4H3v2h11V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3 16h7v-2H3v2z" />
-        </svg>
-      </button>
+      >+</button>
 
       {open && (
-        <div className="absolute right-0 bottom-full mb-1 w-48 bg-zinc-800 border border-zinc-700 rounded-md shadow-xl z-50 py-1 max-h-48 overflow-y-auto">
+        <div className="absolute right-0 bottom-full mb-1 w-56
+                        bg-[rgba(11,13,16,0.96)] backdrop-blur-xl border border-[var(--line2)]
+                        shadow-2xl z-50 max-h-60 overflow-y-auto">
+          <div className="px-3 py-2 border-b border-[var(--line)] font-mono-jb text-[9px] tracking-[3px] text-[var(--mute)] uppercase">
+            Add to System
+          </div>
           {loading && (
-            <p className="px-3 py-2 text-xs text-zinc-500">Loading...</p>
+            <p className="px-3 py-2 text-[12px] text-[var(--mute)] italic">Loading…</p>
           )}
           {!loading && playlists.length === 0 && (
-            <p className="px-3 py-2 text-xs text-zinc-500">
-              No playlists. Create one first.
-            </p>
+            <p className="px-3 py-2 text-[12px] text-[var(--mute)] italic">No systems yet.</p>
           )}
-          {!loading &&
-            playlists.map((pl) => (
-              <button
-                key={pl.id}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleAdd(pl.id);
-                }}
-                className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${
-                  addedTo === pl.id
-                    ? 'text-green-400'
-                    : 'text-zinc-300 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                {addedTo === pl.id ? 'Added!' : pl.name}
-              </button>
-            ))}
+          {!loading && playlists.map((pl) => (
+            <button
+              key={pl.id}
+              onClick={(e) => { e.stopPropagation(); handleAdd(pl.id); }}
+              className={`w-full text-left px-3 py-2 text-[12px] font-serif transition-colors flex items-center gap-2 border-b border-[var(--line)]
+                ${addedTo === pl.id ? 'text-[var(--sun)]' : 'text-[var(--ink2)] hover:text-[var(--ink)] hover:bg-[rgba(255,255,255,0.025)]'}`}
+            >
+              {addedTo === pl.id ? <>◉ Added</> : pl.name}
+            </button>
+          ))}
         </div>
       )}
     </div>

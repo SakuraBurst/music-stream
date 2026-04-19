@@ -11,19 +11,25 @@ export default function AlbumsPage() {
   const loadAlbums = useLibraryStore((s) => s.loadAlbums);
   const loadMore = useLibraryStore((s) => s.loadMoreAlbums);
 
-  useEffect(() => {
-    loadAlbums();
-  }, [loadAlbums]);
+  useEffect(() => { loadAlbums(); }, [loadAlbums]);
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Albums</h1>
+      <header className="border-b border-[var(--line)] pb-4 mb-6 flex items-baseline justify-between">
+        <div>
+          <p className="font-mono-jb text-[10px] tracking-[3px] text-[var(--mute)] uppercase">02 · Albums</p>
+          <h1 className="font-serif text-[32px] text-[var(--ink)] mt-1">
+            Albums<span className="text-[var(--mute)] font-light italic"> · collected</span>
+          </h1>
+        </div>
+        <span className="font-mono-jb text-[10px] tracking-[2px] text-[var(--mute)]">{total || '—'} · VOLUMES</span>
+      </header>
 
       {loading && albums.length === 0 && (
-        <p className="text-zinc-400">Loading albums...</p>
+        <p className="font-mono-jb text-[10px] tracking-[3px] text-[var(--mute)] uppercase">Loading albums…</p>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
         {albums.map((album) => (
           <AlbumCard
             key={album.id}
@@ -35,11 +41,7 @@ export default function AlbumsPage() {
         ))}
       </div>
 
-      <LoadMoreButton
-        loading={loading}
-        hasMore={albums.length < total}
-        onClick={loadMore}
-      />
+      <LoadMoreButton loading={loading} hasMore={albums.length < total} onClick={loadMore} />
     </div>
   );
 }

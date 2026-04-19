@@ -1,145 +1,39 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 import { usePlayerStore } from '../../store/playerStore.ts';
 import type { RepeatMode } from '../../store/playerStore.ts';
 import { coverArtUrl } from '../Library/coverart.ts';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function formatTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatLong(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
 function repeatLabel(mode: RepeatMode): string {
   switch (mode) {
-    case 'none':
-      return 'Repeat';
-    case 'all':
-      return 'Repeat all';
-    case 'one':
-      return 'Repeat one';
+    case 'none': return 'Repeat';
+    case 'all':  return 'Repeat all';
+    case 'one':  return 'Repeat one';
   }
 }
 
-// ---------------------------------------------------------------------------
-// Icons (shared between layouts)
-// ---------------------------------------------------------------------------
-
-function PreviousIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className ?? 'w-5 h-5'}>
-      <path d="M6 6h2v12H6V6zm3.5 6 8.5 6V6l-8.5 6z" />
-    </svg>
-  );
+function VolumeGlyph({ volume }: { volume: number }) {
+  if (volume === 0)    return <span aria-hidden>⨉</span>;
+  if (volume < 0.5)    return <span aria-hidden>◔</span>;
+  return <span aria-hidden>◐</span>;
 }
-
-function NextIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className ?? 'w-5 h-5'}>
-      <path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z" />
-    </svg>
-  );
-}
-
-function PlayIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className ?? 'w-4 h-4'}>
-      <path d="M8 5v14l11-7z" />
-    </svg>
-  );
-}
-
-function PauseIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className ?? 'w-4 h-4'}>
-      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-    </svg>
-  );
-}
-
-function ShuffleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-      <path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
-    </svg>
-  );
-}
-
-function RepeatIcon({ mode }: { mode: RepeatMode }) {
-  if (mode === 'one') {
-    return (
-      <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-        <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-      <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
-    </svg>
-  );
-}
-
-function VolumeIcon({ volume }: { volume: number }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-zinc-400">
-      {volume === 0 ? (
-        <path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z" />
-      ) : volume < 0.5 ? (
-        <path d="M18.5 12A4.5 4.5 0 0 0 16 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z" />
-      ) : (
-        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
-      )}
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ProgressBar (shared)
-// ---------------------------------------------------------------------------
-
-function ProgressBar({
-  progress,
-  duration,
-  onSeek,
-  className,
-}: {
-  progress: number;
-  duration: number;
-  onSeek: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  className?: string;
-}) {
-  const percent = duration > 0 ? (progress / duration) * 100 : 0;
-  return (
-    <div className={`relative group ${className ?? ''}`}>
-      <input
-        type="range"
-        min={0}
-        max={duration || 0}
-        step={0.1}
-        value={progress}
-        onChange={onSeek}
-        className="absolute inset-0 w-full h-1 opacity-0 cursor-pointer z-10"
-        aria-label="Seek"
-      />
-      <div className="w-full h-1 bg-zinc-700 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-white rounded-full transition-[width] duration-100"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// PlayerBar
-// ---------------------------------------------------------------------------
 
 export default function PlayerBar() {
   const currentTrack = usePlayerStore((s) => s.currentTrack);
@@ -164,223 +58,222 @@ export default function PlayerBar() {
   const toggleExpanded = usePlayerStore((s) => s.toggleExpanded);
   const openZen = usePlayerStore((s) => s.openZen);
 
-  const handleSeek = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      seek(Number(e.target.value));
-    },
-    [seek],
-  );
+  const barRef = useRef<HTMLDivElement>(null);
+  const handleSeekClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!barRef.current || duration <= 0) return;
+    const r = barRef.current.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    seek(frac * duration);
+  }, [seek, duration]);
 
   const handleVolume = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setVolume(Number(e.target.value));
-    },
+    (e: React.ChangeEvent<HTMLInputElement>) => setVolume(Number(e.target.value)),
     [setVolume],
   );
 
-  // Don't render if nothing has ever played
   if (!currentTrack) return null;
 
-  return (
-    <div className="shrink-0 border-t border-zinc-800 bg-zinc-900">
-      {/* ============================================================
-          MOBILE LAYOUT (< md)
-          Compact bar: progress on top, then cover + info + play/next.
-          Tapping the track info area opens the expanded player.
-          ============================================================ */}
-      <div className="md:hidden">
-        {/* Thin progress bar at the very top */}
-        <ProgressBar progress={progress} duration={duration} onSeek={handleSeek} />
+  const percent = duration > 0 ? (progress / duration) * 100 : 0;
 
-        <div className="flex items-center gap-3 px-3 py-2">
-          {/* Cover art + track info — opens expanded player */}
+  return (
+    <div
+      className="shrink-0 border-t border-[var(--line)]
+                 bg-[rgba(11,13,16,0.92)] backdrop-blur-xl
+                 text-[var(--ink)]"
+    >
+      {/* MOBILE — compact strip */}
+      <div className="md:hidden px-3 py-2.5">
+        <div
+          ref={barRef}
+          onClick={handleSeekClick}
+          className="relative h-px bg-[var(--line2)] cursor-pointer mb-2.5"
+        >
+          <div
+            className="absolute left-0 top-[-0.5px] h-[2px] bg-[var(--rose)]"
+            style={{
+              width: `${percent}%`,
+              boxShadow: '0 0 6px var(--rose)',
+              transition: 'width 0.1s linear',
+            }}
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
           <button
-            onClick={toggleExpanded}
+            onClick={openZen}
             className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
             aria-label="Open Now Playing"
           >
-            <div className="w-10 h-10 shrink-0 rounded-md bg-zinc-800 overflow-hidden">
+            <div className="w-10 h-10 shrink-0 rounded-sm bg-[var(--bg2)] border border-[var(--line)] overflow-hidden">
               <img
                 src={coverArtUrl(currentTrack.albumId)}
-                alt={currentTrack.title}
+                alt=""
                 className="w-full h-full object-cover"
-                onLoad={(e) => { e.currentTarget.style.display = ''; }}
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm text-zinc-100 truncate">{currentTrack.title}</p>
-              <p className="text-xs text-zinc-400 truncate">{currentTrack.artistName}</p>
+              <p className="font-serif text-[14px] truncate text-[var(--ink)]">
+                {currentTrack.title}
+              </p>
+              <p className="text-[10px] tracking-[2px] text-[var(--rose)] uppercase truncate">
+                ◉ ORBITING · {currentTrack.artistName}
+              </p>
             </div>
           </button>
 
-          {/* Play/Pause */}
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              isPlaying ? pause() : resume();
-            }}
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-white text-black shrink-0"
+            onClick={(e) => { e.stopPropagation(); isPlaying ? pause() : resume(); }}
+            className={`btn-sun w-10 h-10 rounded-full grid place-items-center text-[12px] cursor-pointer ${isPlaying ? 'is-on' : ''}`}
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
-            {isPlaying ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5" />}
+            {isPlaying ? '❚❚' : '▶'}
           </button>
 
-          {/* Next */}
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              next();
-            }}
-            className="text-zinc-400 active:text-white p-1 shrink-0"
+            onClick={(e) => { e.stopPropagation(); next(); }}
+            className="text-[var(--ink2)] active:text-[var(--sun)] p-1 shrink-0 cursor-pointer text-[14px]"
             aria-label="Next"
           >
-            <NextIcon className="w-6 h-6" />
+            ▶▶
           </button>
         </div>
       </div>
 
-      {/* ============================================================
-          DESKTOP LAYOUT (>= md)
-          Full controls: progress bar, transport, shuffle/repeat, volume,
-          expanded player toggle, queue toggle.
-          ============================================================ */}
-      <div className="hidden md:block px-4 py-2">
-        {/* Progress bar (full width) */}
-        <ProgressBar progress={progress} duration={duration} onSeek={handleSeek} className="mb-1" />
+      {/* DESKTOP — orbital strip */}
+      <div
+        className="hidden md:grid items-center gap-5 px-6 py-3"
+        style={{ gridTemplateColumns: 'auto minmax(220px, 1.2fr) minmax(260px, 2fr) auto' }}
+      >
+        <button
+          onClick={isPlaying ? pause : resume}
+          className={`btn-sun w-7 h-7 rounded-full grid place-items-center text-[9px] cursor-pointer ${isPlaying ? 'is-on' : ''}`}
+          aria-label={isPlaying ? 'Pause' : 'Play'}
+          title={isPlaying ? 'Pause' : 'Play'}
+        >
+          {isPlaying ? '❚❚' : '▶'}
+        </button>
 
-        <div className="flex items-center gap-4">
-          {/* Track info — click to open Zen player */}
-          <button
-            onClick={openZen}
-            className="flex items-center gap-3 min-w-0 w-1/4 text-left hover:bg-white/5 rounded-md -ml-2 pl-2 pr-2 py-1 transition-colors cursor-pointer"
-            aria-label="Open fullscreen player"
-            title="Open fullscreen player"
+        <button
+          onClick={openZen}
+          className="flex flex-col gap-[3px] min-w-0 text-left cursor-pointer group"
+          aria-label="Enter Zen"
+          title="Enter Zen"
+        >
+          <p className="font-serif text-[14px] truncate">
+            {currentTrack.title}
+            <span className="text-[var(--mute)]"> · {currentTrack.artistName}</span>
+          </p>
+          <p className="text-[9px] tracking-[2px] text-[var(--rose)] uppercase truncate">
+            ◉ ORBITING · BODY {currentTrack.trackNumber ?? '01'} · {currentTrack.albumName.toUpperCase()}
+          </p>
+        </button>
+
+        <div className="flex items-center gap-3">
+          <span className="font-mono-jb text-[10px] text-[var(--rose)] min-w-[38px] tabular-nums">
+            {formatTime(progress)}
+          </span>
+          <div
+            ref={barRef}
+            onClick={handleSeekClick}
+            className="relative flex-1 h-px bg-[var(--line2)] cursor-pointer group"
           >
-            <div className="w-10 h-10 shrink-0 rounded bg-zinc-800 overflow-hidden">
-              <img
-                src={coverArtUrl(currentTrack.albumId)}
-                alt={currentTrack.title}
-                className="w-full h-full object-cover"
-                onLoad={(e) => { e.currentTarget.style.display = ''; }}
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            <div
+              className="absolute left-0 top-[-0.5px] h-[2px] bg-[var(--rose)]"
+              style={{
+                width: `${percent}%`,
+                transition: 'width 0.1s linear',
+              }}
+            />
+            {percent > 0 && (
+              <div
+                className="absolute top-[-2.5px] w-[6px] h-[6px] -translate-x-1/2 rounded-full bg-[var(--rose)]"
+                style={{
+                  left: `${percent}%`,
+                  boxShadow: '0 0 8px var(--rose)',
+                }}
               />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm text-zinc-100 truncate">{currentTrack.title}</p>
-              <p className="text-xs text-zinc-400 truncate">{currentTrack.artistName}</p>
-            </div>
+            )}
+          </div>
+          <span className="font-mono-jb text-[10px] text-[var(--mute)] min-w-[42px] tabular-nums text-right">
+            {formatLong(duration)}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3 text-[var(--ink2)] text-[13px]">
+          <button
+            onClick={previous}
+            className="hover:text-[var(--sun)] transition-colors cursor-pointer"
+            aria-label="Previous"
+            title="Previous"
+          >
+            ◀◀
+          </button>
+          <button
+            onClick={next}
+            className="hover:text-[var(--sun)] transition-colors cursor-pointer"
+            aria-label="Next"
+            title="Next"
+          >
+            ▶▶
+          </button>
+          <button
+            onClick={toggleShuffle}
+            className={`transition-colors cursor-pointer ${shuffle ? 'text-[var(--sun)]' : 'hover:text-[var(--sun)]'}`}
+            aria-label="Shuffle"
+            title="Shuffle"
+          >
+            ⇌
+          </button>
+          <button
+            onClick={toggleRepeat}
+            className={`transition-colors cursor-pointer ${repeat !== 'none' ? 'text-[var(--sun)]' : 'hover:text-[var(--sun)]'}`}
+            aria-label={repeatLabel(repeat)}
+            title={repeatLabel(repeat)}
+          >
+            {repeat === 'one' ? '⟳¹' : '⟳'}
           </button>
 
-          {/* Transport controls (center) */}
-          <div className="flex items-center justify-center gap-3 flex-1">
-            <button
-              onClick={previous}
-              className="text-zinc-400 hover:text-white transition-colors"
-              aria-label="Previous"
-              title="Previous"
-            >
-              <PreviousIcon />
-            </button>
-
-            <button
-              onClick={isPlaying ? pause : resume}
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-black hover:scale-105 transition-transform"
-              aria-label={isPlaying ? 'Pause' : 'Play'}
-              title={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? <PauseIcon /> : <PlayIcon />}
-            </button>
-
-            <button
-              onClick={next}
-              className="text-zinc-400 hover:text-white transition-colors"
-              aria-label="Next"
-              title="Next"
-            >
-              <NextIcon />
-            </button>
-
-            <span className="text-xs text-zinc-500 tabular-nums ml-1">
-              {formatTime(progress)} / {formatTime(duration)}
+          <span className="flex items-center gap-2 ml-1">
+            <span className="text-[14px] text-[var(--mute)]">
+              <VolumeGlyph volume={volume} />
             </span>
-          </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
+              onChange={handleVolume}
+              className="w-20 h-px range-sun cursor-pointer"
+              aria-label="Volume"
+            />
+          </span>
 
-          {/* Right controls */}
-          <div className="flex items-center gap-2 w-1/4 justify-end">
-            <button
-              onClick={toggleShuffle}
-              className={`text-xs px-2 py-1 rounded transition-colors ${
-                shuffle
-                  ? 'text-white bg-white/10'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-              aria-label="Shuffle"
-              title="Shuffle"
-            >
-              <ShuffleIcon />
-            </button>
-
-            <button
-              onClick={toggleRepeat}
-              className={`text-xs px-2 py-1 rounded transition-colors ${
-                repeat !== 'none'
-                  ? 'text-white bg-white/10'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-              aria-label={repeatLabel(repeat)}
-              title={repeatLabel(repeat)}
-            >
-              <RepeatIcon mode={repeat} />
-            </button>
-
-            {/* Volume */}
-            <div className="flex items-center gap-1">
-              <VolumeIcon volume={volume} />
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={volume}
-                onChange={handleVolume}
-                className="w-20 h-1 accent-white cursor-pointer"
-                aria-label="Volume"
-              />
-            </div>
-
-            {/* Expanded player toggle */}
-            <button
-              onClick={toggleExpanded}
-              className={`text-xs px-2 py-1 rounded transition-colors cursor-pointer ${
-                expandedOpen
-                  ? 'text-white bg-white/10'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-              aria-label="Now Playing"
-              title="Now Playing"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                <path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zM5 15h14v2H5zm0-4h14v2H5zm0-4h14v2H5z" />
-              </svg>
-            </button>
-
-            {/* Queue toggle */}
-            <button
-              onClick={toggleQueue}
-              className={`text-xs px-2 py-1 rounded transition-colors cursor-pointer ${
-                queueOpen
-                  ? 'text-white bg-white/10'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-              aria-label="Queue"
-              title="Queue"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z" />
-              </svg>
-            </button>
-          </div>
+          <button
+            onClick={toggleExpanded}
+            className={`pl-3 ml-1 border-l border-[var(--line2)] transition-colors cursor-pointer ${expandedOpen ? 'text-[var(--sun)]' : 'hover:text-[var(--sun)]'}`}
+            aria-label="Now Playing"
+            title="Now Playing"
+          >
+            ◉
+          </button>
+          <button
+            onClick={toggleQueue}
+            className={`transition-colors cursor-pointer ${queueOpen ? 'text-[var(--sun)]' : 'hover:text-[var(--sun)]'}`}
+            aria-label="Queue"
+            title="Queue"
+          >
+            ☰
+          </button>
+          <button
+            onClick={openZen}
+            className="text-[var(--sun)] hover:text-[var(--ink)] transition-colors cursor-pointer text-[15px]"
+            aria-label="Enter Zen"
+            title="Enter Zen"
+          >
+            ⤢
+          </button>
         </div>
       </div>
     </div>

@@ -111,16 +111,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   expandedOpen: false,
 
   play: (track, queue, queueIndex) => {
+    const { currentTrack } = get();
     const newQueue = queue ?? [track];
     const idx = queueIndex ?? 0;
-    set({
-      currentTrack: track,
-      queue: newQueue,
-      queueIndex: idx,
-      isPlaying: true,
-      progress: 0,
-      duration: 0,
-    });
+
+    if (currentTrack && currentTrack.id === track.id) {
+      // Same track (e.g. after session restore) — don't reload audio,
+      // just update queue context and resume from the start.
+      set({
+        queue: newQueue,
+        queueIndex: idx,
+        isPlaying: true,
+        progress: 0,
+      });
+    } else {
+      set({
+        currentTrack: track,
+        queue: newQueue,
+        queueIndex: idx,
+        isPlaying: true,
+        progress: 0,
+        duration: 0,
+      });
+    }
   },
 
   pause: () => set({ isPlaying: false }),

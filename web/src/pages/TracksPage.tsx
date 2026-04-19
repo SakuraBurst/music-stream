@@ -12,11 +12,8 @@ function compareTracks(a: TrackResponse, b: TrackResponse, key: SortKey, dir: So
   let cmp: number;
   const av = a[key];
   const bv = b[key];
-  if (typeof av === 'string' && typeof bv === 'string') {
-    cmp = av.localeCompare(bv);
-  } else {
-    cmp = (av as number) - (bv as number);
-  }
+  if (typeof av === 'string' && typeof bv === 'string') cmp = av.localeCompare(bv);
+  else cmp = (av as number) - (bv as number);
   return dir === 'asc' ? cmp : -cmp;
 }
 
@@ -25,20 +22,22 @@ interface SortHeaderProps {
   sortKey: SortKey;
   currentKey: SortKey;
   currentDir: SortDir;
-  onSort: (key: SortKey) => void;
+  onSort: (k: SortKey) => void;
   className?: string;
 }
 
 function SortHeader({ label, sortKey, currentKey, currentDir, onSort, className }: SortHeaderProps) {
   const active = sortKey === currentKey;
-  const arrow = active ? (currentDir === 'asc' ? ' \u2191' : ' \u2193') : '';
-
   return (
     <th
-      className={`px-3 py-2 text-left cursor-pointer select-none hover:text-zinc-300 transition-colors ${className ?? ''} ${active ? 'text-zinc-200' : ''}`}
+      className={`px-3 py-2.5 text-left cursor-pointer select-none font-mono-jb text-[9px] tracking-[2.5px] transition-colors
+        ${active ? 'text-[var(--sun)]' : 'text-[var(--mute)] hover:text-[var(--ink2)]'} ${className ?? ''}`}
       onClick={() => onSort(sortKey)}
     >
-      {label}{arrow}
+      <span className="inline-flex items-center gap-1 uppercase">
+        {label}
+        {active && <span>{currentDir === 'asc' ? '↑' : '↓'}</span>}
+      </span>
     </th>
   );
 }
@@ -53,17 +52,11 @@ export default function TracksPage() {
   const [sortKey, setSortKey] = useState<SortKey>('title');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
-  useEffect(() => {
-    loadTracks();
-  }, [loadTracks]);
+  useEffect(() => { loadTracks(); }, [loadTracks]);
 
   function handleSort(key: SortKey) {
-    if (key === sortKey) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(key);
-      setSortDir('asc');
-    }
+    if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir('asc'); }
   }
 
   const sorted = useMemo(
@@ -73,26 +66,33 @@ export default function TracksPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Tracks</h1>
+      <header className="border-b border-[var(--line)] pb-4 mb-6 flex items-baseline justify-between">
+        <div>
+          <p className="font-mono-jb text-[10px] tracking-[3px] text-[var(--mute)] uppercase">03 · Bodies</p>
+          <h1 className="font-serif text-[32px] text-[var(--ink)] mt-1">
+            Tracks<span className="text-[var(--mute)] font-light italic"> · catalog</span>
+          </h1>
+        </div>
+        <span className="font-mono-jb text-[10px] tracking-[2px] text-[var(--mute)]">{total || '—'} · BODIES</span>
+      </header>
 
       {loading && tracks.length === 0 && (
-        <p className="text-zinc-400">Loading tracks...</p>
+        <p className="font-mono-jb text-[10px] tracking-[3px] text-[var(--mute)] uppercase">Loading bodies…</p>
       )}
 
       <table className="w-full table-fixed">
         <thead>
-          <tr className="border-b border-zinc-800 text-xs text-zinc-500 uppercase tracking-wider">
-            <th className="px-3 py-2 text-right w-10">#</th>
-            <SortHeader label="Title" sortKey="title" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
-            <SortHeader label="Artist" sortKey="artistName" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
-            <SortHeader label="Album" sortKey="albumName" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+          <tr className="border-b border-[var(--line2)]">
+            <th className="px-3 py-2.5 text-right w-10 font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">#</th>
+            <SortHeader label="Body"     sortKey="title"       currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+            <SortHeader label="Origin"   sortKey="artistName"  currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+            <SortHeader label="System"   sortKey="albumName"   currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
             <SortHeader
-              label="Duration"
+              label="Span"
               sortKey="durationSeconds"
-              currentKey={sortKey}
-              currentDir={sortDir}
+              currentKey={sortKey} currentDir={sortDir}
               onSort={handleSort}
-              className="text-right w-20"
+              className="text-right w-24"
             />
           </tr>
         </thead>
@@ -110,11 +110,7 @@ export default function TracksPage() {
         </tbody>
       </table>
 
-      <LoadMoreButton
-        loading={loading}
-        hasMore={tracks.length < total}
-        onClick={loadMore}
-      />
+      <LoadMoreButton loading={loading} hasMore={tracks.length < total} onClick={loadMore} />
     </div>
   );
 }

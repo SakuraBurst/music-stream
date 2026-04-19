@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route } from 'react-router';
 
 import ProtectedRoute from './components/Auth/ProtectedRoute.tsx';
 import MainLayout from './components/Layout/MainLayout.tsx';
-import ExpandedPlayer from './components/Player/ExpandedPlayer.tsx';
 import PlayerProvider from './components/Player/PlayerProvider.tsx';
 import ZenPlayer from './components/Player/ZenPlayer.tsx';
 import HomePage from './pages/HomePage.tsx';
@@ -25,7 +24,6 @@ export default function App() {
     <BrowserRouter>
       <PlayerProvider />
       <ZenPlayer />
-      <ExpandedPlayer />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

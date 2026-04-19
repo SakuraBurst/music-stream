@@ -11,18 +11,30 @@ import type { PlaylistDetail } from '../api/playlist.ts';
 import type { TrackResponse } from '../types/index.ts';
 import TrackRow from '../components/Library/TrackRow.tsx';
 import { requestPlayback } from '../components/Library/playback-events.ts';
+import { orbitColorFor } from '../components/Cosmic/palette.ts';
+import SideViewDiagram from '../components/Cosmic/SideViewDiagram.tsx';
+import { usePlayerStore } from '../store/playerStore.ts';
+
+function fmtLong(seconds: number): string {
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
 
 export default function PlaylistDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [detail, setDetail] = useState<PlaylistDetail | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Edit mode
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const currentTrackId = usePlayerStore((s) => s.currentTrack?.id);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -37,9 +49,7 @@ export default function PlaylistDetailPage() {
     }
   }, [id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -48,8 +58,7 @@ export default function PlaylistDetailPage() {
     try {
       const updated = await updatePlaylist(id, editName.trim(), editDesc.trim());
       setDetail((prev) =>
-        prev ? { ...prev, name: updated.name, description: updated.description } : prev,
-      );
+        prev ? { ...prev, name: updated.name, description: updated.description } : prev);
       setEditing(false);
     } finally {
       setSaving(false);
@@ -61,9 +70,7 @@ export default function PlaylistDetailPage() {
     try {
       await deletePlaylist(id);
       navigate('/playlists', { replace: true });
-    } catch {
-      // Silently handle
-    }
+    } catch { /* silent */ }
   }
 
   async function handleRemoveTrack(trackId: string) {
@@ -71,13 +78,8 @@ export default function PlaylistDetailPage() {
     try {
       await removeTrackFromPlaylist(id, trackId);
       setDetail((prev) =>
-        prev
-          ? { ...prev, tracks: prev.tracks.filter((t) => t.id !== trackId) }
-          : prev,
-      );
-    } catch {
-      // Silently handle
-    }
+        prev ? { ...prev, tracks: prev.tracks.filter((t) => t.id !== trackId) } : prev);
+    } catch { /* silent */ }
   }
 
   function handlePlayAll() {
@@ -87,37 +89,38 @@ export default function PlaylistDetailPage() {
 
   if (loading || !detail) {
     return (
-      <div>
-        <p className="text-zinc-400">Loading playlist...</p>
+      <div className="flex items-center justify-center py-20">
+        <p className="font-mono-jb text-[10px] tracking-[3px] text-[var(--mute)] uppercase">Loading system…</p>
       </div>
     );
   }
 
+  const accent = orbitColorFor(detail.id);
+  const totalDuration = detail.tracks.reduce((a, t) => a + t.durationSeconds, 0);
+
   return (
     <div>
-      {/* Playlist header */}
-      <div className="flex items-start gap-6 mb-8">
-        <div className="w-48 h-48 shrink-0 rounded-lg bg-zinc-800 flex items-center justify-center">
-          <svg
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="w-20 h-20 text-zinc-700"
-          >
-            <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z" />
-          </svg>
-        </div>
-        <div className="flex flex-col justify-end min-w-0 flex-1">
-          <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">
-            Playlist
-          </p>
+      <button
+        onClick={() => navigate('/playlists')}
+        className="font-mono-jb text-[10px] tracking-[2px] uppercase text-[var(--mute)] hover:text-[var(--ink)] transition-colors py-1 cursor-pointer"
+      >
+        ← BACK TO SYSTEMS
+      </button>
 
+      <header className="flex items-baseline justify-between border-b border-[var(--line)] py-4 mt-2 max-md:flex-col max-md:gap-3 max-md:items-start">
+        <div>
+          <div className="font-mono-jb text-[10px] tracking-[3px] text-[var(--mute)] uppercase">
+            SYSTEM · {detail.id.slice(0, 8).toUpperCase()}
+          </div>
           {editing ? (
-            <form onSubmit={handleSave} className="space-y-2 mb-2">
+            <form onSubmit={handleSave} className="mt-2 space-y-2 max-w-md">
               <input
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="w-full max-w-md px-3 py-1.5 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-100 text-xl font-bold focus:outline-none focus:border-zinc-500"
+                className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--line)]
+                           text-[var(--ink)] font-serif text-[26px]
+                           focus:outline-none focus:border-[var(--sun)] transition-colors"
                 autoFocus
               />
               <input
@@ -125,20 +128,25 @@ export default function PlaylistDetailPage() {
                 value={editDesc}
                 onChange={(e) => setEditDesc(e.target.value)}
                 placeholder="Description"
-                className="w-full max-w-md px-3 py-1.5 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 text-sm focus:outline-none focus:border-zinc-500"
+                className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--line)]
+                           text-[var(--ink2)] text-[12px]
+                           focus:outline-none focus:border-[var(--sun)] transition-colors"
               />
               <div className="flex gap-2">
                 <button
                   type="submit"
                   disabled={!editName.trim() || saving}
-                  className="px-3 py-1 text-xs font-medium rounded-md bg-white text-black hover:bg-zinc-200 disabled:opacity-50 transition-colors"
+                  className="font-mono-jb text-[10px] tracking-[3px] uppercase
+                             px-3 py-1.5 border border-[var(--sun)] text-[var(--sun)]
+                             hover:bg-[rgba(217,178,90,0.08)] disabled:opacity-40 transition-colors"
                 >
-                  {saving ? 'Saving...' : 'Save'}
+                  {saving ? 'Saving…' : '◉ Save'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditing(false)}
-                  className="px-3 py-1 text-xs font-medium rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                  className="font-mono-jb text-[10px] tracking-[3px] uppercase
+                             px-3 py-1.5 border border-[var(--line2)] text-[var(--mute)] hover:text-[var(--ink2)] transition-colors"
                 >
                   Cancel
                 </button>
@@ -146,91 +154,114 @@ export default function PlaylistDetailPage() {
             </form>
           ) : (
             <>
-              <h1 className="text-3xl font-bold mb-1 truncate">{detail.name}</h1>
-              {detail.description && (
-                <p className="text-sm text-zinc-400 mb-2">{detail.description}</p>
-              )}
+              <h1 className="font-serif text-[38px] text-[var(--ink)] leading-tight mt-1">
+                {detail.name}
+                {detail.description && (
+                  <span className="font-light italic text-[var(--mute)] text-[24px]"> // {detail.description}</span>
+                )}
+              </h1>
+              <div className="font-mono-jb text-[10px] tracking-[1.5px] text-[var(--mute)] uppercase mt-1">
+                {detail.tracks.length} BODIES · ORBITAL PERIOD {fmtLong(totalDuration)}
+              </div>
             </>
           )}
-
-          <div className="flex items-center gap-2 text-sm text-zinc-400">
-            <span>{detail.tracks.length} tracks</span>
-          </div>
-
-          <div className="flex items-center gap-2 mt-3">
-            {detail.tracks.length > 0 && (
-              <button
-                onClick={handlePlayAll}
-                className="px-4 py-1.5 text-sm font-medium rounded-full bg-white text-black hover:bg-zinc-200 transition-colors"
-              >
-                Play all
-              </button>
-            )}
-            {!editing && (
-              <button
-                onClick={() => setEditing(true)}
-                className="px-3 py-1.5 text-sm rounded-full bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
-              >
-                Edit
-              </button>
-            )}
-            <button
-              onClick={handleDelete}
-              className="px-3 py-1.5 text-sm rounded-full bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-red-400 transition-colors"
-            >
-              Delete
-            </button>
-          </div>
         </div>
+        <div className="font-mono-jb text-[10px] tracking-[2px] text-right uppercase leading-[1.8]" style={{ color: accent }}>
+          ◉ ACTIVE<br />
+          <span className="text-[var(--mute)]">EPOCH J{new Date().getFullYear()}</span>
+        </div>
+      </header>
+
+      <div className="flex items-center gap-2 my-4">
+        {detail.tracks.length > 0 && (
+          <button
+            onClick={handlePlayAll}
+            className="font-mono-jb text-[10px] tracking-[3px] uppercase
+                       px-3 py-2 border border-[var(--sun)] text-[var(--sun)]
+                       hover:bg-[rgba(217,178,90,0.08)] transition-colors"
+          >
+            ▶ PLAY ORBIT
+          </button>
+        )}
+        {!editing && (
+          <button
+            onClick={() => setEditing(true)}
+            className="font-mono-jb text-[10px] tracking-[3px] uppercase
+                       px-3 py-2 border border-[var(--line2)] text-[var(--ink2)]
+                       hover:border-[var(--ink2)] transition-colors"
+          >
+            ✎ EDIT
+          </button>
+        )}
+        <button
+          onClick={handleDelete}
+          className="font-mono-jb text-[10px] tracking-[3px] uppercase
+                     px-3 py-2 border border-[var(--line2)] text-[var(--mute)]
+                     hover:text-[var(--rose)] hover:border-[var(--rose)] transition-colors"
+        >
+          × DELETE
+        </button>
       </div>
 
-      {/* Track list */}
+      {detail.tracks.length > 0 && (
+        <div className="mb-5 px-4 py-4 border border-[var(--line)] bg-[rgba(20,24,32,0.4)]">
+          <div className="flex justify-between font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)] uppercase mb-2">
+            <span>SIDE VIEW · FIRST {Math.min(detail.tracks.length, 12)} BODIES</span>
+            <span>RADIUS ∝ SEQUENCE · CLICK TO PLAY</span>
+          </div>
+          <SideViewDiagram
+            tracks={detail.tracks.map((t) => ({
+              id: t.id,
+              trackNumber: t.trackNumber,
+              durationSeconds: t.durationSeconds,
+            }))}
+            currentId={currentTrackId}
+            onSelect={(selected) => {
+              const idx = detail.tracks.findIndex((x) => x.id === selected.id);
+              if (idx >= 0) requestPlayback(detail.tracks[idx], detail.tracks, idx);
+            }}
+          />
+        </div>
+      )}
+
       {detail.tracks.length > 0 ? (
-        <table className="w-full table-fixed">
-          <thead>
-            <tr className="border-b border-zinc-800 text-xs text-zinc-500 uppercase tracking-wider">
-              <th className="px-3 py-2 text-right w-10">#</th>
-              <th className="px-3 py-2 text-left">Title</th>
-              <th className="px-3 py-2 text-left">Artist</th>
-              <th className="px-3 py-2 text-left">Album</th>
-              <th className="px-3 py-2 text-right w-20">Duration</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detail.tracks.map((track: TrackResponse, i: number) => (
-              <TrackRow
-                key={track.id}
-                track={track}
-                index={i}
-                queue={detail.tracks}
-                showArtist
-                showAlbum
-                extraAction={
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveTrack(track.id);
-                    }}
-                    className="text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                    title="Remove from playlist"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="w-3.5 h-3.5"
-                    >
-                      <path d="M19 13H5v-2h14v2z" />
-                    </svg>
-                  </button>
-                }
-              />
-            ))}
-          </tbody>
-        </table>
+        <div>
+          <table className="w-full table-fixed">
+            <thead>
+              <tr className="border-b border-[var(--line2)]">
+                <th className="px-3 py-2.5 text-right w-12 font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">#</th>
+                <th className="px-3 py-2.5 text-left font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">BODY</th>
+                <th className="px-3 py-2.5 text-left font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">ORIGIN</th>
+                <th className="px-3 py-2.5 text-left font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">SYSTEM</th>
+                <th className="px-3 py-2.5 text-right w-24 font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">SPAN</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.tracks.map((track: TrackResponse, i: number) => (
+                <TrackRow
+                  key={track.id}
+                  track={track}
+                  index={i}
+                  queue={detail.tracks}
+                  showArtist
+                  showAlbum
+                  extraAction={
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleRemoveTrack(track.id); }}
+                      className="text-[var(--mute)] hover:text-[var(--rose)] opacity-0 group-hover:opacity-100 transition-all px-1 cursor-pointer"
+                      title="Remove from system"
+                    >×</button>
+                  }
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <p className="text-zinc-500">
-          This playlist is empty. Add tracks from the library.
-        </p>
+        <div className="text-center py-12 border border-[var(--line)] mt-4">
+          <p className="font-serif italic text-[20px] text-[var(--ink2)]">This system has no bodies</p>
+          <p className="font-mono-jb text-[10px] tracking-[2px] text-[var(--mute)] uppercase mt-1">Add tracks from the library</p>
+        </div>
       )}
     </div>
   );

@@ -23,95 +23,56 @@ export default function DropZone({ onFilesSelected, disabled }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
 
-  const processFiles = useCallback(
-    (fileList: FileList | File[]) => {
-      const files = Array.from(fileList);
-      const invalid = files.filter((f) => !hasValidExtension(f.name));
+  const processFiles = useCallback((fileList: FileList | File[]) => {
+    const files = Array.from(fileList);
+    const invalid = files.filter((f) => !hasValidExtension(f.name));
 
-      if (invalid.length > 0) {
-        const names = invalid.map((f) => f.name).join(', ');
-        setValidationError(
-          `Unsupported file${invalid.length > 1 ? 's' : ''}: ${names}. Accepted formats: ${ACCEPTED_EXTENSIONS.join(', ')}`,
-        );
-        // Still allow valid files through
-        const valid = files.filter((f) => hasValidExtension(f.name));
-        if (valid.length > 0) {
-          onFilesSelected(valid);
-        }
-        return;
-      }
+    if (invalid.length > 0) {
+      const names = invalid.map((f) => f.name).join(', ');
+      setValidationError(
+        `Unsupported file${invalid.length > 1 ? 's' : ''}: ${names}. Accepted: ${ACCEPTED_EXTENSIONS.join(', ')}`,
+      );
+      const valid = files.filter((f) => hasValidExtension(f.name));
+      if (valid.length > 0) onFilesSelected(valid);
+      return;
+    }
+    setValidationError(null);
+    onFilesSelected(files);
+  }, [onFilesSelected]);
 
-      setValidationError(null);
-      onFilesSelected(files);
-    },
-    [onFilesSelected],
-  );
-
-  const handleDragEnter = useCallback(
-    (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (disabled) return;
-      dragCounter.current += 1;
-      if (dragCounter.current === 1) {
-        setIsDragging(true);
-      }
-    },
-    [disabled],
-  );
+  const handleDragEnter = useCallback((e: DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    if (disabled) return;
+    dragCounter.current += 1;
+    if (dragCounter.current === 1) setIsDragging(true);
+  }, [disabled]);
 
   const handleDragLeave = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     dragCounter.current -= 1;
-    if (dragCounter.current === 0) {
-      setIsDragging(false);
-    }
+    if (dragCounter.current === 0) setIsDragging(false);
   }, []);
 
-  const handleDragOver = useCallback(
-    (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!disabled) {
-        e.dataTransfer.dropEffect = 'copy';
-      }
-    },
-    [disabled],
-  );
+  const handleDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!disabled) e.dataTransfer.dropEffect = 'copy';
+  }, [disabled]);
 
-  const handleDrop = useCallback(
-    (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
-      dragCounter.current = 0;
-      if (disabled) return;
+  const handleDrop = useCallback((e: DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+    if (disabled) return;
+    if (e.dataTransfer.files.length > 0) processFiles(e.dataTransfer.files);
+  }, [disabled, processFiles]);
 
-      const { files } = e.dataTransfer;
-      if (files.length > 0) {
-        processFiles(files);
-      }
-    },
-    [disabled, processFiles],
-  );
-
-  const handleFileInput = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      const { files } = e.target;
-      if (files && files.length > 0) {
-        processFiles(files);
-      }
-      // Reset the input so selecting the same file(s) again triggers onChange
-      e.target.value = '';
-    },
-    [processFiles],
-  );
+  const handleFileInput = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) processFiles(e.target.files);
+    e.target.value = '';
+  }, [processFiles]);
 
   const handleClick = useCallback(() => {
-    if (!disabled) {
-      inputRef.current?.click();
-    }
+    if (!disabled) inputRef.current?.click();
   }, [disabled]);
 
   return (
@@ -122,41 +83,31 @@ export default function DropZone({ onFilesSelected, disabled }: DropZoneProps) {
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onClick={handleClick}
-        className={`
-          relative flex flex-col items-center justify-center gap-3
-          rounded-lg border-2 border-dashed p-10 cursor-pointer
-          transition-colors duration-200
-          ${isDragging
-            ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300'
-            : 'border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-300'
-          }
-          ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-        `}
+        className={`relative flex flex-col items-center justify-center gap-4 p-12
+                   border border-dashed cursor-pointer transition-all duration-200
+                   ${isDragging
+                     ? 'border-[var(--sun)] bg-[rgba(217,178,90,0.08)] text-[var(--sun)]'
+                     : 'border-[var(--line2)] hover:border-[var(--ink2)] text-[var(--ink2)] bg-[rgba(20,24,32,0.4)]'}
+                   ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
-        {/* Upload icon */}
-        <svg
-          className="w-10 h-10"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={1.5}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-          />
-        </svg>
-
-        <div className="text-center">
-          <p className="text-sm font-medium">
-            {isDragging ? 'Drop files here' : 'Drag and drop audio files here'}
-          </p>
-          <p className="text-xs text-zinc-500 mt-1">or click to choose files</p>
+        <div className={`w-12 h-12 rounded-full grid place-items-center border transition-colors text-[18px]
+                        ${isDragging
+                          ? 'border-[var(--sun)] text-[var(--sun)]'
+                          : 'border-[var(--line2)] text-[var(--mute)]'}`}>
+          ↑
         </div>
 
-        <p className="text-xs text-zinc-600">
-          FLAC, MP3, OGG, WAV, AAC, M4A, ALAC, WMA, APE, Opus
+        <div className="text-center">
+          <p className="font-serif text-[16px] text-[var(--ink)]">
+            {isDragging ? 'Drop bodies here' : 'Drag and drop audio files here'}
+          </p>
+          <p className="font-mono-jb text-[10px] tracking-[2px] text-[var(--mute)] uppercase mt-1">
+            or click to choose files
+          </p>
+        </div>
+
+        <p className="font-mono-jb text-[9px] tracking-[1.5px] text-[var(--mute)] uppercase">
+          FLAC · MP3 · OGG · WAV · AAC · M4A · ALAC · WMA · APE · OPUS
         </p>
 
         <input
@@ -170,7 +121,9 @@ export default function DropZone({ onFilesSelected, disabled }: DropZoneProps) {
       </div>
 
       {validationError && (
-        <p className="mt-2 text-sm text-red-400">{validationError}</p>
+        <div className="mt-3 px-4 py-3 border border-[var(--rose)] text-[var(--rose)] text-[12px] font-mono-jb">
+          {validationError}
+        </div>
       )}
     </div>
   );

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 
 import { AuthApiError } from '../api/auth.ts';
 import { useAuthStore } from '../store/authStore.ts';
+import Starfield from '../components/Cosmic/Starfield.tsx';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -17,40 +18,46 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       await login(username, password);
       navigate('/', { replace: true });
     } catch (err) {
-      if (err instanceof AuthApiError) {
-        setError(err.message);
-      } else {
-        setError('An unexpected error occurred');
-      }
+      if (err instanceof AuthApiError) setError(err.message);
+      else setError('An unexpected error occurred');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-zinc-950">
-      <div className="w-full max-w-sm p-6">
-        <h1 className="text-2xl font-bold text-white mb-6 text-center">
-          Sign in to Sonus
-        </h1>
+    <div className="relative flex items-center justify-center min-h-screen cosmic-bg">
+      <Starfield />
+      <div className="relative z-[2] w-full max-w-sm px-8">
+        <div className="flex flex-col items-center mb-8">
+          <div className="relative w-12 h-12 mb-4 grid place-items-center">
+            <svg viewBox="0 0 48 48" className="absolute inset-0 w-full h-full overflow-visible">
+              <circle cx="24" cy="24" r="22" fill="none" stroke="var(--line2)" strokeWidth="1" strokeDasharray="1 3" />
+              <circle cx="24" cy="24" r="14" fill="var(--sun)" opacity="0.18" />
+              <circle cx="24" cy="24" r="8"  fill="var(--sun)" className="sun-pulse" />
+              <circle cx="44" cy="10" r="1.5" fill="var(--rose)" />
+            </svg>
+          </div>
+          <h1 className="font-serif text-[28px] text-[var(--ink)]">Welcome back</h1>
+          <p className="font-mono-jb text-[10px] tracking-[3px] text-[var(--mute)] uppercase mt-2">
+            ◉ SONUS · OBSERVATORY
+          </p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="rounded-md bg-red-900/50 border border-red-700 px-4 py-3 text-sm text-red-200">
+            <div className="border border-[var(--rose)] px-3 py-2 text-[12px] text-[var(--rose)] font-mono-jb">
               {error}
             </div>
           )}
 
           <div>
-            <label
-              htmlFor="username"
-              className="block text-sm font-medium text-zinc-300 mb-1"
-            >
+            <label htmlFor="username"
+                   className="block font-mono-jb text-[9px] tracking-[2px] text-[var(--mute)] uppercase mb-1">
               Username
             </label>
             <input
@@ -60,16 +67,15 @@ export default function LoginPage() {
               autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 bg-[var(--bg)] border border-[var(--line2)] text-[var(--ink)] placeholder-[var(--mute)]
+                         focus:outline-none focus:border-[var(--sun)] transition-colors"
               placeholder="Enter username"
             />
           </div>
 
           <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-zinc-300 mb-1"
-            >
+            <label htmlFor="password"
+                   className="block font-mono-jb text-[9px] tracking-[2px] text-[var(--mute)] uppercase mb-1">
               Password
             </label>
             <input
@@ -79,7 +85,8 @@ export default function LoginPage() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 bg-[var(--bg)] border border-[var(--line2)] text-[var(--ink)] placeholder-[var(--mute)]
+                         focus:outline-none focus:border-[var(--sun)] transition-colors"
               placeholder="Enter password"
             />
           </div>
@@ -87,19 +94,18 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full font-mono-jb text-[10px] tracking-[3px] uppercase px-3 py-3
+                       border border-[var(--sun)] text-[var(--sun)]
+                       hover:bg-[rgba(217,178,90,0.08)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? 'Signing in...' : 'Login'}
+            {loading ? 'Signing in…' : '◉ Sign in'}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-zinc-400">
-          Don&apos;t have an account?{' '}
-          <Link
-            to="/register"
-            className="text-blue-400 hover:text-blue-300 font-medium"
-          >
-            Register
+        <p className="mt-6 text-center font-mono-jb text-[10px] tracking-[2px] text-[var(--mute)] uppercase">
+          Don't have an account?{' '}
+          <Link to="/register" className="text-[var(--sun)] hover:text-[var(--ink)] transition-colors">
+            Create one →
           </Link>
         </p>
       </div>

@@ -7,6 +7,7 @@ import type { TrackResponse, Artist, AlbumResponse } from '../types/index.ts';
 import TrackRow from '../components/Library/TrackRow.tsx';
 import { coverArtUrl } from '../components/Library/coverart.ts';
 import FavoriteButton from '../components/Favorites/FavoriteButton.tsx';
+import { orbitColorFor } from '../components/Cosmic/palette.ts';
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -18,197 +19,159 @@ export default function SearchPage() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const doSearch = useCallback(async (q: string) => {
-    if (!q.trim()) {
-      setResult(null);
-      return;
-    }
+    if (!q.trim()) { setResult(null); return; }
     setLoading(true);
-    try {
-      const res = await fetchSearch(q.trim());
-      setResult(res);
-    } catch {
-      // Silently handle errors
-    } finally {
-      setLoading(false);
-    }
+    try { setResult(await fetchSearch(q.trim())); }
+    catch { /* silent */ }
+    finally { setLoading(false); }
   }, []);
 
-  // Debounced search on input change
   useEffect(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setSearchParams(input ? { q: input } : {}, { replace: true });
       doSearch(input);
     }, 300);
-
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [input, doSearch, setSearchParams]);
 
-  // Load initial results from URL query param
   useEffect(() => {
-    if (query && !result) {
-      doSearch(query);
-    }
+    if (query && !result) doSearch(query);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Autofocus
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const hasResults =
-    result &&
-    (result.artists.length > 0 ||
-      result.albums.length > 0 ||
-      result.tracks.length > 0);
+  const hasResults = result &&
+    (result.artists.length > 0 || result.albums.length > 0 || result.tracks.length > 0);
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Search</h1>
+      <header className="border-b border-[var(--line)] pb-4 mb-6 flex items-baseline justify-between">
+        <div>
+          <p className="font-mono-jb text-[10px] tracking-[3px] text-[var(--mute)] uppercase">07 · Search</p>
+          <h1 className="font-serif text-[32px] text-[var(--ink)] mt-1">
+            Search<span className="text-[var(--mute)] font-light italic"> · scanner</span>
+          </h1>
+        </div>
+      </header>
 
-      {/* Search input */}
-      <div className="mb-6">
-        <input
-          ref={inputRef}
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Search artists, albums, tracks..."
-          className="w-full max-w-lg px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 transition-colors"
-        />
+      <div className="mb-8 max-w-lg">
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mute)] font-mono-jb text-[11px]">⌕</span>
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Scan origins, systems, bodies…"
+            className="w-full pl-8 pr-4 py-3 bg-[var(--bg)] border border-[var(--line2)]
+                       text-[var(--ink)] placeholder-[var(--mute)]
+                       focus:outline-none focus:border-[var(--sun)] transition-colors"
+          />
+        </div>
       </div>
 
-      {loading && (
-        <p className="text-zinc-400">Searching...</p>
-      )}
+      {loading && <p className="font-mono-jb text-[10px] tracking-[3px] text-[var(--mute)] uppercase">Scanning…</p>}
 
       {!loading && input.trim() && !hasResults && result && (
-        <p className="text-zinc-500">No results found for &ldquo;{input}&rdquo;.</p>
+        <div className="text-center py-12 border border-[var(--line)]">
+          <div className="font-serif italic text-[22px] text-[var(--ink2)]">No results for “{input}”</div>
+          <p className="font-mono-jb text-[10px] tracking-[2px] text-[var(--mute)] uppercase mt-2">Try another query.</p>
+        </div>
       )}
 
       {!loading && !input.trim() && (
-        <p className="text-zinc-500">
-          Enter a search query to find artists, albums, and tracks.
-        </p>
+        <div className="text-center py-12 border border-[var(--line)]">
+          <div className="font-serif italic text-[22px] text-[var(--ink2)]">Enter a query</div>
+          <p className="font-mono-jb text-[10px] tracking-[2px] text-[var(--mute)] uppercase mt-2">
+            Scanner ready · artists · systems · bodies
+          </p>
+        </div>
       )}
 
       {hasResults && result && (
-        <div className="space-y-8">
-          {/* Artists */}
+        <div className="space-y-10">
           {result.artists.length > 0 && (
             <section>
-              <h2 className="text-lg font-semibold mb-3 text-zinc-300">
-                Artists
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {result.artists.map((artist: Artist) => (
-                  <Link
-                    key={artist.id}
-                    to={`/artists/${artist.id}`}
-                    className="group p-3 rounded-lg bg-zinc-900 hover:bg-zinc-800/80 transition-colors"
-                  >
-                    <div className="w-full aspect-square rounded-full bg-zinc-800 mb-3 flex items-center justify-center">
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        className="w-12 h-12 text-zinc-600"
-                      >
-                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                      </svg>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <p className="text-sm font-medium text-zinc-200 truncate flex-1">
-                        {artist.name}
-                      </p>
-                      <FavoriteButton
-                        type="artist"
-                        id={artist.id}
-                        className="opacity-0 group-hover:opacity-100 shrink-0"
-                      />
-                    </div>
-                    <p className="text-xs text-zinc-500">Artist</p>
-                  </Link>
-                ))}
+              <h2 className="font-serif italic text-[20px] text-[var(--ink)] mb-3 border-b border-[var(--line)] pb-2">Stars</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {result.artists.map((artist: Artist) => {
+                  const accent = orbitColorFor(artist.id);
+                  return (
+                    <Link
+                      key={artist.id}
+                      to={`/artists/${artist.id}`}
+                      className="group flex flex-col items-center p-4 border border-[var(--line)]
+                                 bg-[rgba(20,24,32,0.4)] hover:border-[var(--line2)] transition-colors"
+                    >
+                      <div className="relative w-full aspect-square mb-3 grid place-items-center">
+                        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full overflow-visible">
+                          <circle cx="50" cy="50" r="44" fill="none" stroke={accent} strokeWidth="1" strokeDasharray="1 3" opacity="0.55" />
+                          <circle cx="50" cy="50" r="32" fill={accent} opacity="0.10" />
+                          <circle cx="50" cy="50" r="30" fill="none" stroke={accent} strokeWidth="1" />
+                        </svg>
+                        <span className="font-serif italic text-[28px] text-[var(--ink)] relative z-[1]">
+                          {artist.name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 w-full">
+                        <p className="font-serif text-[13px] text-[var(--ink)] truncate flex-1 text-center">{artist.name}</p>
+                        <FavoriteButton type="artist" id={artist.id} className="opacity-0 group-hover:opacity-100 shrink-0" />
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             </section>
           )}
 
-          {/* Albums */}
           {result.albums.length > 0 && (
             <section>
-              <h2 className="text-lg font-semibold mb-3 text-zinc-300">
-                Albums
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              <h2 className="font-serif italic text-[20px] text-[var(--ink)] mb-3 border-b border-[var(--line)] pb-2">Systems</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {result.albums.map((album: AlbumResponse) => (
                   <Link
                     key={album.id}
                     to={`/albums/${album.id}`}
-                    className="group p-3 rounded-lg bg-zinc-900 hover:bg-zinc-800/80 transition-colors"
+                    className="group flex flex-col border border-[var(--line)] bg-[rgba(20,24,32,0.4)]
+                               hover:border-[var(--line2)] transition-colors p-3"
                   >
-                    <div className="w-full aspect-square rounded-md bg-zinc-800 mb-3 overflow-hidden">
+                    <div className="relative w-full aspect-square bg-[var(--bg2)] mb-3 overflow-hidden">
                       <img
                         src={coverArtUrl(album.id)}
                         alt={album.name}
                         className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                        }}
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
                       />
                     </div>
                     <div className="flex items-center gap-1">
-                      <p className="text-sm font-medium text-zinc-200 truncate flex-1">
-                        {album.name}
-                      </p>
-                      <FavoriteButton
-                        type="album"
-                        id={album.id}
-                        className="opacity-0 group-hover:opacity-100 shrink-0"
-                      />
+                      <p className="font-serif text-[14px] text-[var(--ink)] truncate flex-1">{album.name}</p>
+                      <FavoriteButton type="album" id={album.id} className="opacity-0 group-hover:opacity-100 shrink-0" />
                     </div>
-                    <p className="text-xs text-zinc-500 truncate">
-                      {album.artistName}
-                    </p>
+                    <p className="font-mono-jb text-[10px] tracking-[1.5px] text-[var(--mute)] uppercase truncate mt-1">{album.artistName}</p>
                   </Link>
                 ))}
               </div>
             </section>
           )}
 
-          {/* Tracks */}
           {result.tracks.length > 0 && (
             <section>
-              <h2 className="text-lg font-semibold mb-3 text-zinc-300">
-                Tracks
-              </h2>
+              <h2 className="font-serif italic text-[20px] text-[var(--ink)] mb-3 border-b border-[var(--line)] pb-2">Bodies</h2>
               <table className="w-full table-fixed">
                 <thead>
-                  <tr className="border-b border-zinc-800 text-xs text-zinc-500 uppercase tracking-wider">
-                    <th className="px-3 py-2 text-right w-10">#</th>
-                    <th className="px-3 py-2 text-left">Title</th>
-                    <th className="px-3 py-2 text-left">Artist</th>
-                    <th className="px-3 py-2 text-left">Album</th>
-                    <th className="px-3 py-2 text-right w-20">Duration</th>
+                  <tr className="border-b border-[var(--line2)]">
+                    <th className="px-3 py-2.5 text-right w-10 font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">#</th>
+                    <th className="px-3 py-2.5 text-left font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">BODY</th>
+                    <th className="px-3 py-2.5 text-left font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">ORIGIN</th>
+                    <th className="px-3 py-2.5 text-left font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">SYSTEM</th>
+                    <th className="px-3 py-2.5 text-right w-24 font-mono-jb text-[9px] tracking-[2.5px] text-[var(--mute)]">SPAN</th>
                   </tr>
                 </thead>
                 <tbody>
                   {result.tracks.map((track: TrackResponse, i: number) => (
-                    <TrackRow
-                      key={track.id}
-                      track={track}
-                      index={i}
-                      queue={result.tracks}
-                      showArtist
-                      showAlbum
-                    />
+                    <TrackRow key={track.id} track={track} index={i} queue={result.tracks} showArtist showAlbum />
                   ))}
                 </tbody>
               </table>

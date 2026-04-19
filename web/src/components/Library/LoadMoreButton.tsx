@@ -8,13 +8,16 @@ export default function LoadMoreButton({ loading, hasMore, onClick }: LoadMoreBu
   if (!hasMore) return null;
 
   return (
-    <div className="flex justify-center py-6">
+    <div className="flex justify-center py-8">
       <button
         onClick={onClick}
         disabled={loading}
-        className="px-6 py-2 text-sm font-medium rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="font-mono-jb text-[10px] tracking-[3px] uppercase
+                   px-5 py-2 border border-[var(--line2)] text-[var(--ink2)]
+                   hover:text-[var(--sun)] hover:border-[var(--sun)]
+                   disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
-        {loading ? 'Loading...' : 'Load more'}
+        {loading ? 'Loading…' : '↓ Load more'}
       </button>
     </div>
   );
